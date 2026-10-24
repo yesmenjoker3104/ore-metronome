@@ -17,7 +17,11 @@ PC 用メトロノームアプリの仕様と設計方針をまとめる。
 | クリック音 | 標準音をプログラムで生成（外部ファイル不要）。加えて WAV 等のファイルで差し替え可能 |
 | 機能 | BPM 設定 / 拍子設定 / 表拍アクセント / タップテンポ / 細分音符 / 拍の視覚表示 / キーボードショートカット / プリセット保存・読込 / 音量調整 |
 | 配布 | ソースからの実行に加え、PyInstaller で exe 化（`--onedir` / `--windowed`） |
+| ドラマー向け機能（実装対象） | カウントイン / 基準音符の選択 / ハーフタイム・ダブルタイム / 目標 BPM でのステップアップ / スウィング量（3.16） |
 | 配置先 | `ore-metronome/`（ワークスペース直下） |
+| バージョン管理 | セマンティックバージョニング（SemVer）でリリースを管理する（3.14） |
+| 自動アップデート | 起動時に新しいリリースを確認し、ユーザーの同意を得てから更新する（3.15） |
+| テスト | テストコードを書いてから実装する（テストファースト）。すべての機能を pytest で検証する（7 節） |
 
 ## 3. 機能仕様
 
@@ -142,6 +146,7 @@ PC 用メトロノームアプリの仕様と設計方針をまとめる。
 - 上限と下限を指定できる。範囲は 20〜300 に収める。
 - 変更は小節の頭（1 拍目）で反映する。
 - ON/OFF を切り替えられる。
+- 目標 BPM を指定できる。目標に達したらテンポ変化を止める（3.16.4）。
 
 #### 3.12.2 ミュート小節（コーチモード）
 
@@ -212,12 +217,113 @@ PC 用メトロノームアプリの仕様と設計方針をまとめる。
 - 2 トラックの音色は分ける（確定）。
 - 1 拍目の強調は、トラックごとに任意に ON/OFF できる（確定。既定値は両トラックとも ON で `Proposed`）。
 
+### 3.13 アプリアイコン
+
+- 素材: `img/image_ed49ee5.jpg`（緑の角丸正方形に「俺」と音符のデザイン。周囲は暗い緑の背景）。
+- 表示先（確定）: ウィンドウの左上（タイトルバー）と、画面下のタスクバー。
+- 元画像は背景を含むため、角丸の正方形部分だけを切り出して使う（`Proposed`）。
+- 角丸の外側は透過させる（`Proposed`）。
+- 素材は実装時に変換し、以下のファイルとして持つ（`Proposed`）。
+  - `src/ore_metronome/assets/icon.ico`: 16, 24, 32, 48, 64, 128, 256 px を 1 ファイルに含める（ウィンドウ・タスクバー・exe 用）
+  - `src/ore_metronome/assets/icon.png`: 256 px（必要に応じて UI 内で利用）
+- 実装時の対応:
+  - ウィンドウに `setWindowIcon` で設定する。
+  - Windows のタスクバーに正しく出すため、起動時に AppUserModelID を設定する（`python` 直接実行時はこれがないと Python のアイコンになる）。
+  - exe のアイコンは PyInstaller の `--icon src\ore_metronome\assets\icon.ico` で指定する。
+- 元の `img/` フォルダは素材の保管場所として残す。
+
+### 3.14 バージョン管理
+
+- バージョンは SemVer（`MAJOR.MINOR.PATCH`）で管理する。初期版は `0.1.0`。`1.0.0` までは `0.x` とする（`Proposed`）。
+- 版番号の定義元は `src/ore_metronome/version.py` の `__version__` ひとつだけにする。`pyproject.toml` は `[tool.setuptools.dynamic]` の `attr` でこの値を参照し、二重に書かない。
+- Git のタグは `vX.Y.Z` 形式で `main` に打つ。タグと `__version__` が一致しない場合はテストで失敗させる。
+- 変更履歴は `CHANGELOG.md` に版ごとに書く（Keep a Changelog 形式）。
+- 版番号はアプリのタイトルバーと「バージョン情報」ダイアログに表示する。
+- 版の上げ方（`Proposed`）:
+  - PATCH: 不具合修正
+  - MINOR: 機能追加（後方互換あり）
+  - MAJOR: 保存データ形式や設定の互換性を壊す変更
+- 保存データ（`presets.json`, `settings.json`, `setlists.json`）には `schema_version` を入れ、読込時に確認する（`Proposed`）。
+
+### 3.15 自動アップデート
+
+- 配布元は GitHub Releases（`yesmenjoker3104/ore-metronome`）とする。
+- 起動時に最新の安定版（プレリリースを除く）を確認する。確認は別スレッドで行い、UI を止めない（`Proposed`）。
+- 新しい版があれば、更新の内容（CHANGELOG の該当部分）を示し、「更新する」「後で」「この版をスキップ」を選べる。勝手には更新しない（確定方針）。
+- 手動の「更新を確認」メニューを用意する。手動確認のときだけ、通信エラーや「最新版です」を表示する。
+- 起動時の自動確認は設定で OFF にできる。既定は ON（`Proposed`）。
+- 通信できない場合は、起動時には何も表示せずに通常どおり起動する。
+- 更新の手順（`Proposed`）:
+  1. Release の zip（`ore-metronome-windows-x64.zip`）と、同じ Release の `.sha256` を取得する。
+  2. sha256 が一致しなければ中止し、ファイルを削除する。
+  3. 一時フォルダに展開する。展開時は zip 内のパスが展開先の外に出ないことを確認する（zip slip 対策）。
+  4. 現在のアプリを終了させ、補助処理で `ore-metronome\` を差し替える。元のフォルダは `ore-metronome.bak\` として残す。
+  5. 新しい版を起動する。起動に失敗した場合は `.bak` から元に戻す（ロールバック）。
+  6. 成功したら `.bak` を削除する。
+- 実行中のフォルダは自分自身で置き換えられないため、差し替えは別プロセスで行う（`Proposed`）。
+- 更新で保存データは消さない。`%APPDATA%\ore-metronome\` は更新の対象外。
+- コード署名は未実施のため、Windows の SmartScreen 警告が出る可能性がある（10 節 6）。
+
+### 3.16 ドラマー向け機能
+
+実装対象の機能と、将来候補（3.16.6〜）を分けて書く。将来候補は実装対象外で、決まったら仕様に昇格させる。
+
+#### 3.16.1 カウントイン
+
+- 再生を開始するとき、本番の前に 1〜2 小節（設定可）の拍を鳴らす。カウント後に本番の拍が始まる。
+- カウント中の拍は、通常の拍と音色を分けて区別できるようにする（`Proposed`）。
+- カウント中の拍は、小節カウンタ（3.12.3）や停止条件に数えない（`Proposed`）。
+- ON/OFF を設定できる。既定は OFF（`Proposed`）。
+
+#### 3.16.2 基準音符の選択
+
+- BPM が数える音符を選べる: 4 分（既定）、付点 4 分、2 分、8 分。
+- BPM は「選んだ音符が 1 分間に何個あるか」を表す。クリック間隔は `60 ÷ BPM × 基準音符の長さ`（4 分音符を 1 とした比）で求める。
+- タップテンポ、テンポ自動変更（3.12.1）、セットリストの BPM も同じ基準で扱う。
+- 画面では BPM の横に基準音符の記号を表示する。
+- 1 小節の拍数は拍子の分子とは別に設定できる。例: 6/8 を付点 4 分 = 1 拍で数える場合、1 小節は 2 拍とする（`Proposed`。未決事項 21）。
+
+#### 3.16.3 ハーフタイム / ダブルタイム
+
+- 表示の BPM はそのままにして、クリック間隔だけを変える。
+- ハーフタイム: クリック間隔を 2 倍にする（体感のテンポは半分）。
+- ダブルタイム: クリック間隔を 1/2 にする（体感のテンポは 2 倍）。
+- 通常 / ハーフタイム / ダブルタイムの 3 状態を切り替える。
+- 基準音符（3.16.2）とは独立して働く。
+
+#### 3.16.4 目標 BPM で止まるステップアップ
+
+- 3.12.1 のテンポ自動変更に、目標 BPM を加える。上昇・下降のどちらも可。
+- 目標に達したら、テンポの変化を止めて、その BPM で鳴らし続ける（`Proposed`。再生を止めるかは未決事項 20）。
+- 例: 100 から 4 小節ごとに +2、目標 140 で止まる。
+
+#### 3.16.5 スウィング量
+
+- 範囲は 50〜75%。50% がストレート（既定）、約 66% が 3 連符のシャッフル（`Proposed`）。
+- 対象は 2 分割の細分（8 分・16 分・32 分）の裏拍（偶数番目）のみ。3 連符・5 連符などは対象外（`Proposed`）。
+- 裏拍の位置は、2 つ 1 組の起点から `2 × 細分の間隔 × スウィング比` だけ後ろにずらす。
+- 位置マスクとアクセントは変えず、打点の位置だけを動かす。
+- プリセットに含める（`Proposed`）。
+
+#### 3.16.6 将来候補: 出力先の分割
+
+- クリックを 2 つの出力先に同時に出す、または左右のチャンネルに振り分ける。
+- 用途の例: 自分だけイヤモニに送り、スピーカーからは鳴らさない。
+- 必要な拡張: 出力デバイスを複数扱う（3.12.5 の拡張）か、ステレオの振り分け設定。詳細は未検討。
+
+#### 3.16.7 将来候補: セクション切替
+
+- 1 曲の中に「イントロ・A メロ・サビ」などのセクションを作り、順番に進める。
+- セクションごとに BPM、拍子、位置マスク（3.4.1）、スウィング量などを持つ。
+- 3.12.10 のセットリストの「曲」を、曲の中の「セクション」に置き換えた形。
+
 ## 4. 非機能要件
 
 - 拍のタイミングは UI のタイマーではなく、音声コールバック内でサンプル単位に計算する（テンポの揺れを避ける）。
 - UI スレッドを止めない。音声出力は専用のストリーム（`sounddevice`）で行う。
 - 音声デバイスが見つからない場合は、起動時にエラーメッセージを表示し、再生ボタンを無効化する。
-- 外部ネットワーク通信は行わない。個人のパスはコードに埋め込まない。
+- ネットワーク通信は自動アップデートの確認・ダウンロードのみ。接続先は GitHub Releases に限定する。個人情報や利用状況は送信しない。
+- 個人のパスはコードに埋め込まない。
 
 ## 5. 設計
 
@@ -229,49 +335,122 @@ PC 用メトロノームアプリの仕様と設計方針をまとめる。
 | 音声出力 | sounddevice (0.4 以上 1 未満) |
 | 音声ファイル読込 | soundfile (0.12 以上 1 未満) |
 | 波形生成・ミックス | numpy (1.26 以上 3 未満) |
-| テスト / 静的検査 | pytest, ruff |
+| テスト / 静的検査 | pytest, pytest-qt（UI）, pytest-cov（カバレッジ）, ruff |
+| 自動アップデート | 標準ライブラリ（`urllib`, `hashlib`, `zipfile`）のみ。追加の依存は増やさない |
 | 配布 | pyinstaller (6.10 以上 7 未満) |
 
 依存関係は `pyproject.toml` を正とする（`ore-music-player` と同じ構成）。
 
 ### 5.2 ディレクトリ構成（予定）
 
+構成の方針（`Proposed`）:
+
+- `ore-music-player` と同じ層構成（`domain` / `application` / `infrastructure` / `ui`）と、テストの区分（`unit` / `integration` / `probes`）にそろえる。
+- パッケージは `src/` 配下に置き、テストは `pip install -e .[dev]` で入れたパッケージを import する。作業ディレクトリに依存した import を防ぐ。
+- 保存データはリポジトリ内に作らず、`%APPDATA%\ore-metronome\` に置く（`ore-music-player` の `data/` とは異なる。3.15 の更新で消えないようにするため）。
+- ビルド関連のスクリプトは `scripts/` にまとめる（`ore-music-player` はルートの `build.ps1`）。
+- 生成物（`.venv/`, `build/`, `dist/`, `.pytest_cache/`, `.ruff_cache/`, `.coverage`）は `.gitignore` に入れる。素材（`img/`）は原本として残し、`src/ore_metronome/assets/` に変換後のファイルを置く。
+- 改行コードは `.gitattributes` で統一する（`*.py`, `*.ps1`, `*.md`, `*.toml` は LF、`*.ico`, `*.png`, `*.jpg` はバイナリ扱い）。
+- `AGENTS.md` を置き、`ore-music-player` と同じ開発ルール（`DESIGN.md` を先に更新する、検証コマンド、`Proposed` / `Open` の扱い）を書く。
+
 ```text
 ore-metronome/
-  DESIGN.md
-  README.md
-  pyproject.toml
-  launch.py              # PyInstaller 用のエントリポイント
-  build.ps1              # exe 化スクリプト
+  DESIGN.md                 # 設計の正（仕様と判断の記録）
+  README.md                 # 導入と使い方
+  AGENTS.md                 # コーディングエージェント向けの開発ルール
+  CHANGELOG.md              # 版ごとの変更履歴
+  （LICENSE は置かない。10 節 22）
+  pyproject.toml            # 依存・ツール設定。版番号は version.py を参照
+  .python-version           # 3.13
+  .gitignore
+  .gitattributes
+  launch.py                 # PyInstaller 用のエントリポイント（絶対 import で起動）
+  img/                      # アイコンの素材原本（変更しない）
+  scripts/
+    build.ps1               # exe・zip・sha256 を作る
+    make_version_info.py    # exe のファイルプロパティ用 version_info を version.py から生成
+  .github/workflows/
+    ci.yml                  # push / PR で ruff と pytest を実行（10 節 18）
   src/ore_metronome/
     __init__.py
-    __main__.py          # python -m ore_metronome
-    app.py               # QApplication の起動
-    core/
-      timing.py          # TimeSignature, Subdivision, MetronomeSettings
-      tap_tempo.py       # タップ間隔から BPM を算出
-      presets.py         # Preset, PresetStore（JSON 読み書き）
-    audio/
-      sounds.py          # 既定音の生成、WAV 読込、リサンプル、SoundKit
-      renderer.py        # 拍のスケジューリングとミックス（numpy のみ）
-      engine.py          # sounddevice の出力ストリーム管理
-    ui/
-      main_window.py     # メインウィンドウ
-      beat_indicator.py  # 拍の視覚表示ウィジェット
+    __main__.py             # python -m ore_metronome
+    version.py              # __version__ の唯一の定義元
+    bootstrap.py            # 依存の組み立て、AppUserModelID、ログの初期化
+    single_instance.py      # 二重起動の防止（Proposed）
+    domain/                 # 純粋な Python。Qt・音声・ファイル I/O に依存しない
+      __init__.py
+      meter.py              # 拍子、拍・小節、表拍アクセントの判定
+      subdivision.py        # 細分（1〜5, 7, 8, 9, 32 分）、位置マスク、スウィング位置
+      tempo.py              # BPM 範囲、基準音符、ハーフ / ダブルタイム、クリック間隔
+      tempo_ramp.py         # テンポの自動変更と目標 BPM（3.12.1, 3.16.4）
+      tap_tempo.py          # タップ間隔から BPM を算出
+      session.py            # 小節カウンタ、カウントイン、ミュート小節、停止条件
+      rhythm_pattern.py     # 拍のグループ化とグループ頭のアクセント（3.12.9）
+      polyrhythm.py         # 2 トラックの組み合わせ（3.12.11）
+      setlist.py            # 曲順と曲ごとの設定（3.12.10）
+      models.py             # MetronomeSettings, SoundSelection, Preset（frozen dataclass）
+    application/            # ユースケース。domain を組み合わせ、外部は ports 経由で扱う
+      __init__.py
+      ports.py              # AudioOutput, SettingsStore などの Protocol
+      metronome_service.py  # 再生・停止、設定の反映、拍イベントの受け渡し
+      preset_service.py     # プリセットの適用と保存
+      setlist_service.py    # 曲の自動送り
+      update_service.py     # 更新の確認、取得、適用の流れ
+    infrastructure/         # 外部との接続。ports を実装する
+      __init__.py
+      audio/
+        sounds.py           # 既定音の生成、WAV 読込、リサンプル、SoundKit
+        renderer.py         # 拍のスケジューリングとミックス（numpy のみ）
+        engine.py           # sounddevice の出力ストリーム（AudioOutput の実装）
+        devices.py          # 出力デバイスの列挙と選択（3.12.5）
+      persistence/
+        paths.py            # %APPDATA%\ore-metronome\ などの保存先
+        json_store.py       # schema_version の確認、原子的な書き込み、壊れた JSON の扱い
+        settings_repository.py
+        preset_repository.py
+        setlist_repository.py
+      update/
+        github_releases.py  # Releases API の取得と最新版の選択（urllib）
+        downloader.py       # zip の取得と sha256 検証
+        extractor.py        # 展開（zip slip 対策）
+        apply_update.py     # 差し替えと .bak からのロールバック（別プロセス）
+      resources.py          # 同梱資源の場所（開発時と exe 時で切り替える）
+    ui/                     # PySide6。表示と操作のみを担当する
+      __init__.py
+      main_window.py
+      controller.py         # ウィジェットと application の橋渡し
+      theme.py              # カラーテーマ（3.11, 3.12.6）
+      widgets/
+        beat_indicator.py   # 拍の LED 表示
+        mask_buttons.py     # 位置マスクのボタン
+      dialogs/
+        settings_dialog.py
+        update_dialog.py    # 更新内容の表示と「更新する / 後で / スキップ」
+        about_dialog.py     # 版番号の表示
+    assets/
+      icon.ico              # 3.13
+      icon.png
   tests/
-    test_timing.py
-    test_tap_tempo.py
-    test_presets.py
-    test_sounds.py
-    test_renderer.py
-    test_main_window.py
+    conftest.py             # 共通 fixture（一時の APPDATA、ダミー出力、offscreen の Qt）
+    unit/                   # src と同じ階層に並べる
+      domain/
+      application/
+      infrastructure/
+      ui/
+      test_version_consistency.py   # __version__、CHANGELOG、タグの一致
+      test_layering.py              # domain が Qt・音声ライブラリを import していないことを確認
+    integration/            # 一時フォルダへの保存、WAV 読込、展開の実行
+    probes/                 # 実機の音出し・遅延（marker "probe"。既定では実行しない）
+    fixtures/               # サンプル WAV、壊れた JSON、Releases API の応答例
 ```
 
 ### 5.3 レイヤー分離
 
-- `core`: 純粋な Python（Qt や音声ライブラリに依存しない）。単体テストの対象。
-- `audio`: `renderer.py` は numpy のみで動作し、デバイスなしでテストできる。`engine.py` だけが sounddevice に依存する。
-- `ui`: PySide6 のみに依存する。`engine` はインターフェース経由で注入し、テストではダミーに差し替える。
+- `domain`: 純粋な Python。PySide6・sounddevice・numpy・ファイル I/O に依存しない。単体テストの中心。
+- `application`: `domain` を組み合わせる。外部とは `ports.py` の Protocol 経由でのみ話す。テストではダミーの実装を注入する。
+- `infrastructure`: `ports` を実装する（audio, persistence, update）。`sounddevice` を import するのは `audio/engine.py` と `audio/devices.py` だけ。`renderer.py` は numpy のみで動作し、デバイスなしでテストできる。
+- `ui`: PySide6 のみに依存する。ロジックは持たず、`controller.py` が `application` のサービスを呼ぶ。
+- 依存の向きは `ui → application → domain`、`infrastructure → application.ports → domain` のみ。逆向きの import は `tests/unit/test_layering.py` で検出する。
 
 ### 5.4 タイミング設計
 
@@ -314,23 +493,38 @@ ore-metronome/
 
 ## 7. テスト方針
 
-- `core`: BPM 範囲、拍子の検証、拍・細分・アクセントの判定、細分の打点数（1, 2, 3, 4, 5, 7, 8, 9）、位置マスクの検証（全 OFF の拒否）、タップテンポ算出（リセット・外れ値・丸め）、プリセットの保存と読込（壊れた JSON・マスク含む）。
-- `audio`: 既定音の生成、WAV 読込とリサンプル、`render` によるクリック位置の正確さ（例: 120 BPM・44100Hz で 22050 サンプル間隔）、5 連符のマスク（1・3・5 のみ ON なら各拍で 3 回鳴る）、7 連・9 連・32 分の打点数、BPM 変更の反映、音量。デバイス不要。
-- `ui`: `QT_QPA_PLATFORM=offscreen` で起動し、BPM 同期、ショートカット、プリセット保存、ダミーエンジンへの反映を確認する。
+- `domain`: BPM 範囲、拍子の検証、拍・細分・アクセントの判定、細分の打点数（1, 2, 3, 4, 5, 7, 8, 9, 32 分）、位置マスクの検証（全 OFF の拒否）、スウィングの位置、ハーフ / ダブルタイムの間隔、テンポ自動変更の段階と目標での停止、小節カウンタとカウントイン、タップテンポ算出（リセット・外れ値・丸め）。
+- `application`: 再生・停止、設定変更の反映、プリセットとセットリストの適用、更新の流れ。ダミーの `AudioOutput` と `SettingsStore` で検証する。
+- `infrastructure`: `renderer` の 44100Hz で 120 BPM の 22050 サンプル間隔、5 連符のマスク（1・3・5 のみ ON なら各拍で 3 回鳴る）、7 連・9 連・32 分の打点数、既定音の生成、WAV 読込とリサンプル、JSON の保存と読込（壊れた JSON・マスク・schema_version の不一致を含む）、更新の sha256 不一致・zip slip・展開失敗・ロールバック。デバイス不要。
+- `ui`: `QT_QPA_PLATFORM=offscreen` で起動し、BPM 同期、マスクボタン、プリセット保存、ダミーエンジンへの反映を確認する。
 - 実機の音出し確認は自動テストに含めず、手動で行う（`Open` 参照）。
+- テストは実装より先に書く（テストファースト）。バグ修正のときは、再現するテストを先に追加する（`Proposed`）。
+- テストの配置は `src` と同じ階層にそろえる（`tests/unit/domain`, `tests/unit/application`, `tests/unit/infrastructure`, `tests/unit/ui`）。実ファイルを使うものは `tests/integration`、実機が必要なものは `tests/probes` に分ける（5.2 参照）。
+- `tests/probes` は pytest の marker `probe` を付け、既定の実行（`addopts` で除外）には含めない。実行は `python -m pytest -m probe`。
+- 自動アップデートのテストは実際の通信を行わない。HTTP 応答は差し替え、sha256 不一致、zip slip（展開先の外へのパス）、展開失敗、起動失敗時のロールバックを確認する。
+- カバレッジの目標（`Proposed`）: `domain`, `application`, `infrastructure` は行カバレッジ 90% 以上。`ui` は主要な操作を網羅する。
+- 版番号の整合性テスト: `__version__` と `CHANGELOG.md` の最新版が一致すること、Git タグを使う場合は `vX.Y.Z` と一致すること。
+- コミット前に全テストと ruff を通す。CI の導入は 10 節 18。
 
 検証コマンド（プロジェクト直下、`.venv` 有効化後）:
 
 ```powershell
 python -m pytest -q
+python -m pytest --cov=ore_metronome --cov-report=term-missing -q
 python -m ruff check src tests
 ```
 
-## 8. 配布
+## 8. 配布・リリース
 
-- `build.ps1` で `pyinstaller --noconfirm --clean --onedir --windowed launch.py --name ore-metronome` を実行する。
-- 出力は `dist\ore-metronome\` と、zip（`dist\ore-metronome-windows-x64.zip`）。
+- `scripts\build.ps1` で、`make_version_info.py` により exe のバージョン情報を作ったあと、`pyinstaller --noconfirm --clean --onedir --windowed --icon src\ore_metronome\assets\icon.ico --version-file build\version_info.txt launch.py --name ore-metronome` を実行する（アイコンは 3.13 参照）。
+- 出力は `dist\ore-metronome\` と、zip（`dist\ore-metronome-windows-x64.zip`）と、その sha256（`dist\ore-metronome-windows-x64.zip.sha256`）。
 - 既定音は生成のため同梱ファイルは不要。
+- リリース手順（`Proposed`）:
+  1. `version.py` と `CHANGELOG.md` を更新し、テストが通ることを確認する。
+  2. `main` に commit し、`vX.Y.Z` タグを打って push する。
+  3. `scripts\build.ps1` で zip と sha256 を作る。
+  4. `gh release create vX.Y.Z` で GitHub Release を作り、zip と sha256 を添付する。
+  5. 更新確認が新版を検出することを、旧版の exe から手動で確認する。
 
 ## 9. スコープ外（今回作らないもの）
 
@@ -357,3 +551,10 @@ python -m ruff check src tests
 13. リズムパターンのグループ頭のアクセントは、グループごとに任意に設定できる（確定。3.12.9。既定値 ON は `Proposed`）。
 14. セットリストは停止条件に達したら次の曲へ自動で進む（確定。3.12.10。曲ごとに ON/OFF）。
 15. ポリリズムの 2 トラックは音色を分ける。1 拍目の強調はトラックごとに任意設定（確定。3.12.11。既定値は ON で `Proposed`）。
+16. exe のコード署名を行うか。行わない場合は SmartScreen の警告を説明文書に書く（`Open`。3.15）。
+17. 起動時の更新確認の既定値（ON 提案）と、確認の頻度（起動ごと、または 1 日 1 回）（`Open`。3.15）。
+18. CI（GitHub Actions）で push ごとに ruff と pytest を Windows 上で実行するか（提案: 行う。`Open`。7 節）。
+19. UI テストに pytest-qt を使うか（提案: 使う。`Open`。5.1）。
+20. 目標 BPM に達したとき、テンポ変化だけを止めて鳴らし続けるか、再生も止めるか（提案: 鳴らし続ける。`Open`。3.16.4）。
+21. 1 小節の拍数を拍子の分子と別に設定するか（提案: 別に設定する。6/8 を付点 4 分 = 1 拍で数える場合は 2 拍。`Open`。3.16.2）。
+22. ライセンス（`LICENSE`）: 今は置かない（決定）。公開リポジトリのため、何も書かないと著作権は作者に留保される。配布や公開利用を広げる段階で改めて決める（`Confirmed`。5.2）。
