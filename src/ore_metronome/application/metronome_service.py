@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from ore_metronome.application.ports import AudioOutput, SettingsStore
 from ore_metronome.domain.meter import Meter
 from ore_metronome.domain.models import MetronomeSettings
@@ -48,6 +50,18 @@ class MetronomeService:
             self.start()
 
     def update_settings(self, settings: MetronomeSettings) -> None:
+        self._apply(settings)
+        self._settings_store.save(settings)
+
+    def set_bpm(self, bpm: int) -> None:
+        self._apply(replace(self._settings, bpm=bpm))
+
+    def set_meter(self, meter: Meter) -> None:
+        self._apply(replace(self._settings, meter=meter))
+
+    def save_settings(self) -> None:
+        self._settings_store.save(self._settings)
+
+    def _apply(self, settings: MetronomeSettings) -> None:
         self._settings = settings
         self._audio_output.configure(settings)
-        self._settings_store.save(settings)

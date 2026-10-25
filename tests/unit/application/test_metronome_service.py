@@ -1,3 +1,5 @@
+import pytest
+
 from ore_metronome.application.metronome_service import (
     MetronomeService,
     default_settings,
@@ -158,3 +160,67 @@ def test_update_settings_configures_audio_and_saves_settings():
     assert service.settings == updated
     assert audio.configured_settings == updated
     assert store.saved_settings == updated
+
+
+def test_set_bpm_updates_settings_and_configures_audio_without_saving():
+    audio = FakeAudioOutput()
+    store = FakeSettingsStore()
+    service = MetronomeService(audio, store)
+
+    service.set_bpm(150)
+
+    assert service.settings.bpm == 150
+    assert service.settings.meter == Meter(4, 4)
+    assert audio.configured_settings == service.settings
+    assert store.saved_settings is None
+
+
+def test_set_bpm_while_running_keeps_audio_running():
+    audio = FakeAudioOutput()
+    store = FakeSettingsStore()
+    service = MetronomeService(audio, store)
+    service.start()
+
+    service.set_bpm(150)
+
+    assert service.is_running is True
+    assert audio.configured_settings.bpm == 150
+
+
+def test_set_bpm_rejects_out_of_range_and_changes_nothing():
+    audio = FakeAudioOutput()
+    store = FakeSettingsStore()
+    service = MetronomeService(audio, store)
+    before = service.settings
+
+    with pytest.raises(ValueError):
+        service.set_bpm(301)
+
+    assert service.settings == before
+    assert audio.configured_settings is None
+    assert store.saved_settings is None
+
+
+def test_set_meter_updates_settings_and_configures_audio_without_saving():
+    audio = FakeAudioOutput()
+    store = FakeSettingsStore()
+    service = MetronomeService(audio, store)
+
+    service.set_meter(Meter(3, 4))
+
+    assert service.settings.meter == Meter(3, 4)
+    assert service.settings.bpm == 120
+    assert audio.configured_settings == service.settings
+    assert store.saved_settings is None
+
+
+def test_save_settings_saves_current_settings():
+    audio = FakeAudioOutput()
+    store = FakeSettingsStore()
+    service = MetronomeService(audio, store)
+    service.set_bpm(150)
+
+    service.save_settings()
+
+    assert store.saved_settings == service.settings
+    assert store.saved_settings.bpm == 150
