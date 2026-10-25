@@ -84,3 +84,32 @@ def test_toggle_button_does_not_take_focus(qtbot):
     window, _ = make_window(qtbot)
 
     assert window._toggle.focusPolicy() == Qt.FocusPolicy.NoFocus
+
+
+def show_window(qtbot):
+    window, service = make_window(qtbot)
+    window.show()
+    qtbot.waitExposed(window)
+    window.activateWindow()
+    qtbot.waitActive(window)
+    window.setFocus()
+    qtbot.wait(100)
+    return window, service
+
+
+def test_space_toggles_playback(qtbot):
+    window, service = show_window(qtbot)
+
+    qtbot.keyClick(window, Qt.Key.Key_Space)
+
+    assert service.is_running
+
+
+def test_up_and_down_change_bpm_by_one(qtbot):
+    window, service = show_window(qtbot)
+
+    qtbot.keyClick(window, Qt.Key.Key_Up)
+    assert service.settings.bpm == 121
+
+    qtbot.keyClick(window, Qt.Key.Key_Down)
+    assert service.settings.bpm == 120

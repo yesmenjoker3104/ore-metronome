@@ -69,3 +69,12 @@ def test_toggle_starts_and_stops(controller_and_service):
 
     controller.toggle()
     assert not controller.is_running
+
+
+def test_tap_sets_bpm_from_interval(controller_and_service):
+    controller, _ = controller_and_service
+
+    controller.tap(10.0)
+    controller.tap(10.4)  # 0.4 秒間隔 = 150 BPM
+
+    assert controller.bpm == 150
