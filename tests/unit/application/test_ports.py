@@ -30,6 +30,9 @@ class FakeAudioOutput:
     def stop(self) -> None:
         self.is_running = False
 
+    def now(self) -> float | None:
+        return None
+
     def configure(self, settings: MetronomeSettings) -> None:
         self.configured_settings = settings
 

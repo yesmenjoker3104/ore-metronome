@@ -24,23 +24,19 @@ def render_bar(
 
     output = np.zeros(buffer_length, dtype=np.float32)
     subdivision = settings.subdivision
-    mask = settings.mask_for(subdivision)
 
     for beat_index in range(settings.meter.beats_per_bar):
-        level = settings.effective_beat_level(beat_index)
-        if level is BeatLevel.SILENT:
+        if settings.effective_beat_level(beat_index) is BeatLevel.SILENT:
             continue
 
-        for subdivision_index, enabled in enumerate(mask):
-            if not enabled:
+        for subdivision_index in range(subdivision):
+            level = settings.effective_position_level(beat_index, subdivision_index)
+            if level is BeatLevel.SILENT:
                 continue
+
             position = beat_index + subdivision_index / subdivision
             start_sample = round(position * beat_seconds * sample_rate)
-
-            if subdivision_index == 0:
-                sound = sounds.accent if level is BeatLevel.ACCENT else sounds.normal
-            else:
-                sound = sounds.subdivision
+            sound = sounds.accent if level is BeatLevel.ACCENT else sounds.normal
 
             _mix_into(output, sound, start_sample)
 

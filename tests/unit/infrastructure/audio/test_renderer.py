@@ -104,20 +104,20 @@ def test_subdivision_sounds_are_placed_at_equal_intervals():
     )
 
     # 1拍 = 50サンプル
-    # 2分割なので、各拍の25サンプル目にも音が入る
+    # 2分割なので、各拍の25サンプル目にも音が入る（細分は通常音で鳴る）
     assert result[0] == 0.25
-    assert result[25] == 0.75
+    assert result[25] == 0.5
     assert result[50] == 0.5
-    assert result[75] == 0.75
+    assert result[75] == 0.5
 
 
-def test_masked_subdivision_is_not_rendered():
+def test_silent_subdivision_is_not_rendered():
     settings = MetronomeSettings(
         bpm=120,
         meter=Meter(2, 4),
         subdivision=2,
         subdivision_masks={
-            2: (True, False),
+            2: (None, BeatLevel.SILENT),
         },
     )
 
@@ -131,6 +131,47 @@ def test_masked_subdivision_is_not_rendered():
     assert result[25] == 0.0
     assert result[50] == 0.5
     assert result[75] == 0.0
+
+
+def test_accent_subdivision_uses_accent_sound():
+    settings = MetronomeSettings(
+        bpm=120,
+        meter=Meter(2, 4),
+        subdivision=2,
+        subdivision_masks={
+            2: (None, BeatLevel.ACCENT),
+        },
+    )
+
+    result = render_bar(
+        settings,
+        make_test_sounds(),
+        sample_rate=100,
+    )
+
+    assert result[25] == 0.25
+    assert result[75] == 0.25
+
+
+def test_accent_subdivision_falls_back_to_normal_when_accent_is_disabled():
+    settings = MetronomeSettings(
+        bpm=120,
+        meter=Meter(2, 4),
+        subdivision=2,
+        subdivision_masks={
+            2: (None, BeatLevel.ACCENT),
+        },
+        accent_enabled=False,
+    )
+
+    result = render_bar(
+        settings,
+        make_test_sounds(),
+        sample_rate=100,
+    )
+
+    assert result[25] == 0.5
+    assert result[75] == 0.5
 
 
 def test_six_tuplet_places_clicks_at_sixths_of_a_quarter_beat():
@@ -148,9 +189,9 @@ def test_six_tuplet_places_clicks_at_sixths_of_a_quarter_beat():
 
     # 1拍 = 50サンプル。6連符の打点は 8.33, 16.67, ... → 8, 17, 25, 33, 42
     assert result[0] == 0.25
-    assert result[8] == 0.75
+    assert result[8] == 0.5
     assert result[16] == 0.0
-    assert result[17] == 0.75
+    assert result[17] == 0.5
 
 
 def test_subdivision_applies_to_the_denominator_beat():
@@ -168,17 +209,17 @@ def test_subdivision_applies_to_the_denominator_beat():
     )
 
     assert result[0] == 0.25
-    assert result[6] == 0.75
-    assert result[19] == 0.75
+    assert result[6] == 0.5
+    assert result[19] == 0.5
 
 
-def test_downbeat_is_muted_when_position_one_is_off():
+def test_downbeat_follows_beat_level_even_when_position_one_is_silent_in_mask():
     settings = MetronomeSettings(
         bpm=120,
         meter=Meter(2, 4),
         subdivision=2,
         subdivision_masks={
-            2: (False, True),
+            2: (None, BeatLevel.SILENT),
         },
     )
 
@@ -188,11 +229,9 @@ def test_downbeat_is_muted_when_position_one_is_off():
         sample_rate=100,
     )
 
-    # 拍頭がOFFなので、強拍・通常拍は鳴らない
-    assert result[0] == 0.0
-    assert result[25] == 0.75
-    assert result[50] == 0.0
-    assert result[75] == 0.75
+    # 1 つ目の位置は拍の強弱に従う。2 拍目（通常）の頭は鳴る
+    assert result[0] == 0.25
+    assert result[50] == 0.5
 
 
 def test_volume_is_applied():
@@ -226,9 +265,9 @@ def test_silent_beat_mutes_its_subdivision_clicks():
         sample_rate=100,
     )
 
-    # 2拍目（サンプル 50 以降）は無音。細分音の 75 も鳴らない
+    # 2拍目（サンプル 50 以降）は無音。細分音の 25 は鳴り、75 は鳴らない
     assert result[0] == 0.25
-    assert result[25] == 0.75
+    assert result[25] == 0.5
     assert result[50] == 0.0
     assert result[75] == 0.0
 

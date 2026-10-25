@@ -5,9 +5,30 @@ from pathlib import Path
 from typing import Any
 
 from ore_metronome.domain.meter import Meter
-from ore_metronome.domain.models import BeatLevel, MetronomeSettings
+from ore_metronome.domain.models import BeatLevel, MetronomeSettings, PositionLevel
 
 CURRENT_SCHEMA_VERSION = 1
+
+
+def _decode_position_levels(raw: Any) -> tuple[PositionLevel, ...]:
+    if not isinstance(raw, list):
+        raise TypeError("subdivision mask must be a list")
+
+    levels: list[PositionLevel] = []
+
+    for position_index, item in enumerate(raw):
+        if isinstance(item, bool):
+            # 旧形式（ON/OFF のみ）。位置 0 は拍に従い、それ以外は ON を通常、OFF を無音とする。
+            if position_index == 0:
+                levels.append(None)
+            else:
+                levels.append(BeatLevel.NORMAL if item else BeatLevel.SILENT)
+        elif item is None:
+            levels.append(None)
+        else:
+            levels.append(BeatLevel(item))
+
+    return tuple(levels)
 
 
 class SettingsDataError(RuntimeError):
@@ -93,7 +114,7 @@ class SettingsRepository:
             },
             "subdivision": settings.subdivision,
             "subdivision_masks": {
-                str(count): list(mask)
+                str(count): [level.value if level is not None else None for level in mask]
                 for count, mask in settings.subdivision_masks.items()
             },
             "accent_enabled": settings.accent_enabled,
@@ -119,7 +140,7 @@ class SettingsRepository:
             raise TypeError("subdivision_masks must be an object")
 
         masks = {
-            int(count): tuple(mask)
+            int(count): _decode_position_levels(mask)
             for count, mask in masks_data.items()
         }
 

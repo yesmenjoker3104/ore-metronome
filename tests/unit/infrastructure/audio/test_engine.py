@@ -15,6 +15,7 @@ class FakeStream:
         self.started = False
         self.stopped = False
         self.closed = False
+        self.time = 0.0
 
     def start(self):
         self.started = True
@@ -73,9 +74,15 @@ def expected_bar() -> np.ndarray:
     return render_bar(make_settings(), make_sounds(), sample_rate=SAMPLE_RATE)
 
 
-def run_callback(stream: FakeStream, frames: int) -> np.ndarray:
+class FakeTimeInfo:
+    def __init__(self, dac_time: float) -> None:
+        self.outputBufferDacTime = dac_time
+
+
+def run_callback(stream: FakeStream, frames: int, dac_time: float | None = None) -> np.ndarray:
     outdata = np.full((frames, 1), -1.0, dtype=np.float32)
-    stream.kwargs["callback"](outdata, frames, None, None)
+    time_info = None if dac_time is None else FakeTimeInfo(dac_time)
+    stream.kwargs["callback"](outdata, frames, time_info, None)
     return outdata[:, 0]
 
 
@@ -264,6 +271,38 @@ def test_beat_sink_receives_beats_in_order():
 
     assert [e.beat_index for e in sink.events] == [0, 1]
     assert [e.is_downbeat for e in sink.events] == [True, False]
+
+
+def test_beats_carry_play_time_from_dac_clock():
+    factory = FakeStreamFactory()
+    sink = FakeBeatSink()
+    engine = SoundDeviceEngine(
+        make_sounds(),
+        sample_rate=SAMPLE_RATE,
+        stream_factory=factory,
+        beat_sink=sink,
+    )
+    engine.start(make_settings())
+
+    # start() では発行せず、最初のブロックで現在拍を再生時刻つきで発行する
+    assert sink.events == []
+    run_callback(factory.streams[0], 60, dac_time=10.0)
+
+    assert [e.play_time for e in sink.events] == [10.0, 10.0 + 50 / SAMPLE_RATE]
+
+
+def test_now_reports_stream_time_only_while_running():
+    factory = FakeStreamFactory()
+    engine = make_engine(factory)
+
+    assert engine.now() is None
+
+    engine.start(make_settings())
+    factory.streams[0].time = 3.5
+    assert engine.now() == 3.5
+
+    engine.stop()
+    assert engine.now() is None
 
 
 

@@ -1,7 +1,7 @@
 from ore_metronome.application.metronome_service import MetronomeService
 from ore_metronome.application.ports import BeatEvent
 from ore_metronome.domain.meter import MAX_NUMERATOR, MIN_NUMERATOR, Meter
-from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME, BeatLevel
+from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME, BeatLevel, PositionLevel
 from ore_metronome.domain.tap_tempo import TapTempo
 from ore_metronome.infrastructure.audio.beat_queue import BeatQueue
 
@@ -31,6 +31,9 @@ class MetronomeController:
         self._service.set_bpm(max(MIN_BPM, min(MAX_BPM, bpm)))
 
     def toggle(self) -> None:
+        # 開始前に、前回の再生で残った拍イベントを捨てる
+        if self._beat_queue is not None:
+            self._beat_queue.clear()
         self._service.toggle()
 
     def tap(self, timestamp: float) -> None:
@@ -72,11 +75,21 @@ class MetronomeController:
     def set_subdivision(self, subdivision: int) -> None:
         self._service.set_subdivision(subdivision)
 
-    def subdivision_mask(self, subdivision: int) -> tuple[bool, ...]:
+    def subdivision_mask(self, subdivision: int) -> tuple[PositionLevel, ...]:
         return self._service.settings.mask_for(subdivision)
 
-    def set_subdivision_mask(self, subdivision: int, mask: tuple[bool, ...]) -> None:
+    def set_subdivision_mask(self, subdivision: int, mask: tuple[PositionLevel, ...]) -> None:
         self._service.set_subdivision_mask(subdivision, mask)
+
+    def subdivision_position_level(self, position_index: int) -> BeatLevel:
+        return self._service.settings.effective_position_level(0, position_index)
+
+    def cycle_subdivision_position(self, position_index: int) -> None:
+        settings = self._service.settings
+        count = settings.subdivision
+        mask = list(settings.mask_for(count))
+        mask[position_index] = settings.cycled_position_level(position_index)
+        self._service.set_subdivision_mask(count, tuple(mask))
 
     @property
     def volume(self) -> int:
@@ -91,4 +104,4 @@ class MetronomeController:
     def drain_beats(self) -> list[BeatEvent]:
         if self._beat_queue is None:
             return []
-        return self._beat_queue.drain()
+        return self._beat_queue.drain(self._service.audio_now())

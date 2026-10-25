@@ -20,6 +20,9 @@ class FakeAudio:
     def stop(self) -> None:
         self.is_running = False
 
+    def now(self) -> float | None:
+        return None
+
     def configure(self, settings) -> None:
         pass
 
@@ -363,8 +366,14 @@ def test_mask_buttons_match_subdivision_count(qtbot):
     window._subdivision_combo.setCurrentIndex(window._subdivision_combo.findData(5))
 
     assert not window._mask_container.isHidden()
-    shown = [not button.isHidden() for button in window._mask_buttons]
-    assert shown == [True] * 5 + [False] * 4
+    shown = {index for index, button in window._mask_buttons.items() if not button.isHidden()}
+    assert shown == {1, 2, 3, 4}
+
+
+def test_first_position_has_no_mask_button(qtbot):
+    window, _ = make_window(qtbot)
+
+    assert 0 not in window._mask_buttons
 
 
 def test_mask_container_is_hidden_without_subdivision(qtbot):
@@ -375,24 +384,39 @@ def test_mask_container_is_hidden_without_subdivision(qtbot):
     assert window._mask_container.isHidden()
 
 
-def test_mask_button_click_updates_service(qtbot):
+def test_mask_button_click_cycles_level(qtbot):
     window, service = make_window(qtbot)
     window._subdivision_combo.setCurrentIndex(window._subdivision_combo.findData(3))
 
     window._mask_buttons[1].click()
 
-    assert service.settings.mask_for(3) == (True, False, True)
+    assert service.settings.mask_for(3) == (None, BeatLevel.SILENT, BeatLevel.NORMAL)
+    assert window._mask_buttons[1].property("level") == "silent"
 
 
-def test_last_on_mask_position_cannot_be_turned_off(qtbot):
+def test_mask_button_click_visits_accent_normal_and_silent(qtbot):
     window, service = make_window(qtbot)
     window._subdivision_combo.setCurrentIndex(window._subdivision_combo.findData(2))
-    window._mask_buttons[0].click()
+    button = window._mask_buttons[1]
+
+    levels = []
+    for _ in range(3):
+        button.click()
+        levels.append(service.settings.mask_for(2)[1])
+
+    assert levels == [BeatLevel.SILENT, BeatLevel.ACCENT, BeatLevel.NORMAL]
+    assert button.property("level") == "normal"
+
+
+def test_mask_button_shows_level_for_accent(qtbot):
+    window, service = make_window(qtbot)
+    window._subdivision_combo.setCurrentIndex(window._subdivision_combo.findData(2))
 
     window._mask_buttons[1].click()
+    window._mask_buttons[1].click()
 
-    assert service.settings.mask_for(2) == (False, True)
-    assert window._mask_buttons[1].isChecked()
+    assert window._mask_buttons[1].property("level") == "accent"
+    assert window._mask_buttons[1].toolTip() == "アクセント"
 
 
 def test_subdivision_is_enabled_for_any_denominator(qtbot):

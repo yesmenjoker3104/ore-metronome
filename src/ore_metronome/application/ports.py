@@ -14,6 +14,8 @@ class BeatEvent:
     beat_index: int
     is_downbeat: bool
     is_subdivision: bool
+    # 音が実際に出力される時刻（AudioOutput.now() と同じ時計）。不明なら None
+    play_time: float | None = None
 
 
 @runtime_checkable
@@ -26,6 +28,10 @@ class AudioOutput(Protocol):
     @property
     def sample_rate(self) -> int:
         """Returns the sample rate of the audio output."""
+        ...
+
+    def now(self) -> float | None:
+        """Returns the current playback clock, or None if the output is not running."""
         ...
 
     def start(self, settings: MetronomeSettings) -> None:

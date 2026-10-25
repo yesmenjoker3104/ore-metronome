@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from ore_metronome.application.update_service import UpdateService
 from ore_metronome.domain.meter import ALLOWED_DENOMINATORS, MAX_NUMERATOR, MIN_NUMERATOR
-from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME
+from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME, BeatLevel
 from ore_metronome.domain.subdivision import ALLOWED_COUNTS
 from ore_metronome.domain.tap_tempo import RESET_SECONDS
 from ore_metronome.domain.update import ReleaseInfo
@@ -38,6 +38,12 @@ WINDOW_WIDTH = 496
 WINDOW_HEIGHT = 480
 
 MASK_BUTTON_SIZE = 28
+
+MASK_LEVEL_LABELS = {
+    BeatLevel.ACCENT: "アクセント",
+    BeatLevel.NORMAL: "通常音",
+    BeatLevel.SILENT: "音なし",
+}
 
 SUBDIVISION_LABELS = {
     1: "なし",
@@ -83,9 +89,17 @@ QPushButton#toggle {
 QPushButton#mask {
     padding: 4px;
     border-radius: 8px;
+    border: 1px solid #3A3A3A;
+    color: #6B6B6B;
 }
-QPushButton#mask:checked {
+QPushButton#mask[level="normal"] {
+    background-color: #1F3D2C;
+    border-color: #1F3D2C;
+    color: #00E676;
+}
+QPushButton#mask[level="accent"] {
     background-color: #00E676;
+    border-color: #00E676;
     color: #0B0B0B;
     font-weight: bold;
 }
@@ -220,16 +234,19 @@ class MainWindow(QWidget):
         mask_layout = QHBoxLayout(self._mask_container)
         mask_layout.setContentsMargins(0, 0, 0, 0)
         mask_layout.setSpacing(2)
-        self._mask_buttons: list[QPushButton] = []
-        for index in range(max(ALLOWED_COUNTS)):
-            button = QPushButton(str(index + 1))
+        # 1 つ目の位置は拍インジケータの強弱に従うため、ボタンは 2 つ目以降のみ置く。
+        self._mask_buttons: dict[int, QPushButton] = {}
+        for position_index in range(1, max(ALLOWED_COUNTS)):
+            button = QPushButton(str(position_index + 1))
             button.setObjectName("mask")
-            button.setCheckable(True)
             button.setFixedSize(MASK_BUTTON_SIZE, MASK_BUTTON_SIZE)
+            button.setFont(self.font())
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            button.clicked.connect(lambda checked, i=index: self._on_mask_clicked(i, checked))
+            button.clicked.connect(
+                lambda _checked=False, i=position_index: self._on_mask_clicked(i)
+            )
             mask_layout.addWidget(button)
-            self._mask_buttons.append(button)
+            self._mask_buttons[position_index] = button
         self._subdivision_combo.currentIndexChanged.connect(self._on_subdivision_changed)
         self._refresh_mask_buttons()
 
@@ -412,20 +429,22 @@ class MainWindow(QWidget):
 
     def _refresh_mask_buttons(self) -> None:
         count = self._controller.subdivision
-        mask = self._controller.subdivision_mask(count)
         self._mask_container.setVisible(count > 1)
-        for index, button in enumerate(self._mask_buttons):
-            button.setVisible(index < count)
-            button.setChecked(index < count and mask[index])
+        for position_index, button in self._mask_buttons.items():
+            button.setVisible(position_index < count)
+            if position_index < count:
+                level = self._controller.subdivision_position_level(position_index)
+                self._set_mask_level(button, level)
 
-    def _on_mask_clicked(self, index: int, checked: bool) -> None:
-        count = self._controller.subdivision
-        mask = list(self._controller.subdivision_mask(count))
-        mask[index] = checked
-        if not any(mask):
-            self._mask_buttons[index].setChecked(True)
-            return
-        self._controller.set_subdivision_mask(count, tuple(mask))
+    def _set_mask_level(self, button: QPushButton, level: BeatLevel) -> None:
+        button.setProperty("level", level.value)
+        button.setToolTip(MASK_LEVEL_LABELS[level])
+        button.style().unpolish(button)
+        button.style().polish(button)
+
+    def _on_mask_clicked(self, position_index: int) -> None:
+        self._controller.cycle_subdivision_position(position_index)
+        self._refresh_mask_buttons()
 
     def _update_meter_label(self) -> None:
         self._meter_label.setText(

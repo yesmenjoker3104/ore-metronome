@@ -2,6 +2,7 @@ import pytest
 
 from ore_metronome.application.metronome_service import MetronomeService
 from ore_metronome.domain.meter import MAX_NUMERATOR, MIN_NUMERATOR
+from ore_metronome.domain.models import BeatLevel
 from ore_metronome.ui.controller import MAX_BPM, MIN_BPM, MetronomeController
 
 
@@ -14,6 +15,9 @@ class FakeAudio:
 
     def stop(self) -> None:
         self.is_running = False
+
+    def now(self) -> float | None:
+        return None
 
     def configure(self, settings) -> None:
         pass
@@ -116,6 +120,25 @@ def test_set_subdivision_mask_updates_service(controller_and_service):
     controller, _ = controller_and_service
     controller.set_subdivision(5)
 
-    controller.set_subdivision_mask(5, (True, False, True, False, True))
+    controller.set_subdivision_mask(
+        5,
+        (None, BeatLevel.SILENT, BeatLevel.ACCENT, BeatLevel.NORMAL, BeatLevel.SILENT),
+    )
 
-    assert controller.subdivision_mask(5) == (True, False, True, False, True)
+    assert controller.subdivision_mask(5) == (
+        None,
+        BeatLevel.SILENT,
+        BeatLevel.ACCENT,
+        BeatLevel.NORMAL,
+        BeatLevel.SILENT,
+    )
+
+
+def test_cycle_subdivision_position_updates_current_subdivision(controller_and_service):
+    controller, _ = controller_and_service
+    controller.set_subdivision(3)
+
+    controller.cycle_subdivision_position(2)
+
+    assert controller.subdivision_mask(3) == (None, BeatLevel.NORMAL, BeatLevel.SILENT)
+    assert controller.subdivision_position_level(2) is BeatLevel.SILENT

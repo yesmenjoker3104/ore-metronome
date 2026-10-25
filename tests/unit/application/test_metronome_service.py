@@ -24,6 +24,9 @@ class FakeAudioOutput:
         self.is_running = False
         self.stopped_count += 1
 
+    def now(self) -> float | None:
+        return None
+
     def configure(self, settings: MetronomeSettings) -> None:
         self.configured_settings = settings
 
@@ -230,9 +233,9 @@ def test_set_subdivision_mask_updates_settings_and_configures_audio():
     service = MetronomeService(audio, store)
     service.set_subdivision(3)
 
-    service.set_subdivision_mask(3, (True, False, True))
+    service.set_subdivision_mask(3, (None, BeatLevel.SILENT, BeatLevel.ACCENT))
 
-    assert service.settings.mask_for(3) == (True, False, True)
+    assert service.settings.mask_for(3) == (None, BeatLevel.SILENT, BeatLevel.ACCENT)
     assert audio.configured_settings == service.settings
     assert store.saved_settings is None
 
