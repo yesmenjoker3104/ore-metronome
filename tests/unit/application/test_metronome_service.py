@@ -5,7 +5,7 @@ from ore_metronome.application.metronome_service import (
     default_settings,
 )
 from ore_metronome.domain.meter import Meter
-from ore_metronome.domain.models import MetronomeSettings
+from ore_metronome.domain.models import BeatLevel, MetronomeSettings
 
 
 class FakeAudioOutput:
@@ -209,10 +209,32 @@ def test_set_meter_updates_settings_and_configures_audio_without_saving():
     service.set_meter(Meter(3, 4))
 
     assert service.settings.meter == Meter(3, 4)
-    assert service.settings.bpm == 120
+    assert store.saved_settings is None
+
+
+def test_set_subdivision_updates_settings_and_configures_audio_without_saving():
+    audio = FakeAudioOutput()
+    store = FakeSettingsStore()
+    service = MetronomeService(audio, store)
+
+    service.set_subdivision(6)
+
+    assert service.settings.subdivision == 6
     assert audio.configured_settings == service.settings
     assert store.saved_settings is None
 
+
+def test_set_subdivision_mask_updates_settings_and_configures_audio():
+    audio = FakeAudioOutput()
+    store = FakeSettingsStore()
+    service = MetronomeService(audio, store)
+    service.set_subdivision(3)
+
+    service.set_subdivision_mask(3, (True, False, True))
+
+    assert service.settings.mask_for(3) == (True, False, True)
+    assert audio.configured_settings == service.settings
+    assert store.saved_settings is None
 
 def test_save_settings_saves_current_settings():
     audio = FakeAudioOutput()
@@ -232,3 +254,25 @@ def test_set_volume_updates_settings():
     service.set_volume(40)
 
     assert service.settings.volume == 40
+
+
+def test_set_beat_level_updates_settings_and_configures_audio_without_saving():
+    audio = FakeAudioOutput()
+    store = FakeSettingsStore()
+    service = MetronomeService(audio, store)
+
+    service.set_beat_level(2, BeatLevel.SILENT)
+
+    assert service.settings.effective_beat_level(2) is BeatLevel.SILENT
+    assert audio.configured_settings == service.settings
+    assert store.saved_settings is None
+
+
+def test_set_meter_drops_beat_levels_outside_the_new_bar():
+    service = MetronomeService(FakeAudioOutput(), FakeSettingsStore())
+    service.set_beat_level(0, BeatLevel.SILENT)
+    service.set_beat_level(3, BeatLevel.SILENT)
+
+    service.set_meter(Meter(3, 4))
+
+    assert dict(service.settings.beat_levels) == {0: BeatLevel.SILENT}

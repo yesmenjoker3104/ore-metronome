@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ore_metronome.domain.meter import Meter
-from ore_metronome.domain.models import MetronomeSettings
+from ore_metronome.domain.models import BeatLevel, MetronomeSettings
 
 CURRENT_SCHEMA_VERSION = 1
 
@@ -98,6 +98,10 @@ class SettingsRepository:
             },
             "accent_enabled": settings.accent_enabled,
             "volume": settings.volume,
+            "beat_levels": {
+                str(index): level.value
+                for index, level in settings.beat_levels.items()
+            },
         }
 
     @staticmethod
@@ -119,6 +123,17 @@ class SettingsRepository:
             for count, mask in masks_data.items()
         }
 
+        # 拍の状態は後から追加したため、無い設定ファイルも読めるようにする。
+        levels_data = data.get("beat_levels", {})
+
+        if not isinstance(levels_data, dict):
+            raise TypeError("beat_levels must be an object")
+
+        levels = {
+            int(index): BeatLevel(level)
+            for index, level in levels_data.items()
+        }
+
         return MetronomeSettings(
             bpm=data["bpm"],
             meter=Meter(
@@ -129,4 +144,5 @@ class SettingsRepository:
             subdivision_masks=masks,
             accent_enabled=data["accent_enabled"],
             volume=data["volume"],
+            beat_levels=levels,
         )

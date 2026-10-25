@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from ore_metronome.domain.meter import Meter
-from ore_metronome.domain.models import MetronomeSettings
+from ore_metronome.domain.models import BeatLevel, MetronomeSettings
 from ore_metronome.infrastructure.persistence.settings_repository import (
     CURRENT_SCHEMA_VERSION,
     SettingsDataError,
@@ -22,6 +22,7 @@ def make_settings() -> MetronomeSettings:
         },
         accent_enabled=False,
         volume=65,
+        beat_levels={0: BeatLevel.SILENT, 2: BeatLevel.ACCENT},
     )
 
 
@@ -124,3 +125,65 @@ def test_save_creates_parent_directory(tmp_path: Path):
     repository.save(make_settings())
 
     assert path.exists()
+
+
+def test_beat_levels_are_saved_as_names(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    repository = SettingsRepository(path)
+
+    repository.save(make_settings())
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+
+    assert data["beat_levels"] == {"0": "silent", "2": "accent"}
+
+
+def test_load_reads_settings_saved_before_beat_levels_existed(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": CURRENT_SCHEMA_VERSION,
+                "bpm": 120,
+                "meter": {
+                    "numerator": 4,
+                    "denominator": 4,
+                },
+                "subdivision": 1,
+                "subdivision_masks": {},
+                "accent_enabled": True,
+                "volume": 100,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = SettingsRepository(path).load()
+
+    assert settings is not None
+    assert dict(settings.beat_levels) == {}
+
+
+def test_load_rejects_unknown_beat_level(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": CURRENT_SCHEMA_VERSION,
+                "bpm": 120,
+                "meter": {
+                    "numerator": 4,
+                    "denominator": 4,
+                },
+                "subdivision": 1,
+                "subdivision_masks": {},
+                "accent_enabled": True,
+                "volume": 100,
+                "beat_levels": {"0": "loud"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SettingsDataError, match="Invalid settings"):
+        SettingsRepository(path).load()

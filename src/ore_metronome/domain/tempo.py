@@ -1,5 +1,7 @@
 from enum import Enum
 
+from ore_metronome.domain.meter import Meter
+
 MIN_BPM = 20
 MAX_BPM = 300
 
@@ -26,3 +28,8 @@ def click_interval_seconds(
 ) -> float:
     validate_bpm(bpm)
     return (60.0 / bpm) * base.value * mode.value
+
+
+def beat_seconds_for_meter(bpm: int, meter: Meter) -> float:
+    validate_bpm(bpm)
+    return (60.0 / bpm) * (4 / meter.denominator)

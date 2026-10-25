@@ -62,7 +62,7 @@ def test_invalid_volume_is_rejected(volume):
         )
 
 
-@pytest.mark.parametrize("subdivision", [0, 6, 10])
+@pytest.mark.parametrize("subdivision", [0, 10])
 def test_invalid_subdivision_is_rejected(subdivision):
     with pytest.raises(ValueError):
         MetronomeSettings(
@@ -70,6 +70,26 @@ def test_invalid_subdivision_is_rejected(subdivision):
             meter=Meter(4, 4),
             subdivision=subdivision,
         )
+
+
+def test_six_subdivision_is_kept_in_quarter_meter():
+    settings = MetronomeSettings(
+        bpm=120,
+        meter=Meter(4, 4),
+        subdivision=6,
+    )
+
+    assert settings.subdivision == 6
+
+
+def test_subdivision_is_kept_for_any_denominator():
+    settings = MetronomeSettings(
+        bpm=120,
+        meter=Meter(3, 8),
+        subdivision=6,
+    )
+
+    assert settings.subdivision == 6
 
 
 def test_all_off_mask_is_rejected():

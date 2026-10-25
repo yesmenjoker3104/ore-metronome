@@ -1,8 +1,10 @@
 import pytest
 
+from ore_metronome.domain.meter import Meter
 from ore_metronome.domain.tempo import (
     BaseNote,
     TimeMode,
+    beat_seconds_for_meter,
     click_interval_seconds,
     validate_bpm,
 )
@@ -31,3 +33,16 @@ def test_double_time_halves_interval():
 def test_invalid_bpm_is_rejected_when_computing_interval():
     with pytest.raises(ValueError):
         click_interval_seconds(10)
+
+
+@pytest.mark.parametrize(
+    ("denominator", "expected"),
+    [(2, 1.0), (4, 0.5), (8, 0.25), (16, 0.125)],
+)
+def test_beat_is_denominator_note_at_120(denominator, expected):
+    assert beat_seconds_for_meter(120, Meter(9, denominator)) == pytest.approx(expected)
+
+
+def test_beat_seconds_for_meter_rejects_invalid_bpm():
+    with pytest.raises(ValueError):
+        beat_seconds_for_meter(10, Meter(4, 4))

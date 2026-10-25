@@ -8,7 +8,7 @@ import sounddevice as sd
 
 from ore_metronome.application.ports import BeatEvent, BeatEventSink
 from ore_metronome.domain.models import MetronomeSettings
-from ore_metronome.domain.tempo import click_interval_seconds
+from ore_metronome.domain.tempo import beat_seconds_for_meter
 from ore_metronome.infrastructure.audio.renderer import AudioBuffer, render_bar
 from ore_metronome.infrastructure.audio.sounds import SoundKit
 
@@ -76,7 +76,7 @@ class SoundDeviceEngine:
     def configure(self, settings: MetronomeSettings) -> None:
         plan = _BarPlan(
             bar=render_bar(settings, self._sounds, sample_rate=self._sample_rate),
-            beat_seconds=click_interval_seconds(settings.bpm),
+            beat_seconds=beat_seconds_for_meter(settings.bpm, settings.meter),
             beats=settings.meter.beats_per_bar,
         )
         with self._lock:

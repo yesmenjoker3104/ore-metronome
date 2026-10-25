@@ -1,8 +1,8 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from ore_metronome.domain.models import MetronomeSettings
-from ore_metronome.domain.tempo import click_interval_seconds
+from ore_metronome.domain.models import BeatLevel, MetronomeSettings
+from ore_metronome.domain.tempo import beat_seconds_for_meter
 from ore_metronome.infrastructure.audio.sounds import SoundKit
 
 AudioBuffer = NDArray[np.float32]
@@ -17,28 +17,28 @@ def render_bar(
     if sample_rate <= 0:
         raise ValueError("sample_rate must be positive")
 
-    beat_seconds = click_interval_seconds(settings.bpm)
+    beat_seconds = beat_seconds_for_meter(settings.bpm, settings.meter)
 
     bar_seconds = beat_seconds * settings.meter.beats_per_bar
     buffer_length = round(bar_seconds * sample_rate)
 
     output = np.zeros(buffer_length, dtype=np.float32)
-    mask = settings.mask_for(settings.subdivision)
+    subdivision = settings.subdivision
+    mask = settings.mask_for(subdivision)
 
     for beat_index in range(settings.meter.beats_per_bar):
+        level = settings.effective_beat_level(beat_index)
+        if level is BeatLevel.SILENT:
+            continue
+
         for subdivision_index, enabled in enumerate(mask):
             if not enabled:
                 continue
-            position = (
-                beat_index + subdivision_index / settings.subdivision
-            )
+            position = beat_index + subdivision_index / subdivision
             start_sample = round(position * beat_seconds * sample_rate)
 
             if subdivision_index == 0:
-                if beat_index == 0 and settings.accent_enabled:
-                    sound = sounds.accent
-                else:
-                    sound = sounds.normal
+                sound = sounds.accent if level is BeatLevel.ACCENT else sounds.normal
             else:
                 sound = sounds.subdivision
 
