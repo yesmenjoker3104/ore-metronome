@@ -2,6 +2,12 @@
 
 このプロジェクトの変更履歴です。形式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に従います。
 
+## [0.1.6] - 2026-10-25
+
+### Fixed
+- 自動アップデートが「ファイルが別のプロセスで使用されている」で失敗する不具合を修正（フォルダではなく `ore-metronome.exe` だけを差し替えるように変更）
+- 自動アップデートの途中で PowerShell の窓が表示されないようにした（結果は `%TEMP%\ore-metronome-update.log` に記録）
+
 ## [0.1.5] - 2026-10-25
 
 ### Added

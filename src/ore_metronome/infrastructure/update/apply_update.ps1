@@ -12,14 +12,37 @@ function Write-Log([string]$Message) {
     Add-Content -Path $logPath -Value $line -Encoding UTF8
 }
 
+# The PyInstaller bootloader can keep the old exe locked for a moment after the app exits.
+function Remove-BackupExe {
+    $deadline = (Get-Date).AddSeconds(30)
+    while (Test-Path -LiteralPath $backupExePath) {
+        try {
+            Remove-Item -LiteralPath $backupExePath -Force
+        }
+        catch {
+            if ((Get-Date) -ge $deadline) {
+                Write-Log "Backup left in place: $($_.Exception.Message)"
+                return
+            }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+}
+
 $currentPath = [System.IO.Path]::GetFullPath($CurrentApplication).TrimEnd('\')
 $stagedPath = [System.IO.Path]::GetFullPath($StagedApplication).TrimEnd('\')
-$backupPath = "$currentPath.bak"
-$backupName = Split-Path -Leaf $backupPath
-$exePath = Join-Path $currentPath 'ore-metronome.exe'
+$exeName = 'ore-metronome.exe'
+$exePath = Join-Path $currentPath $exeName
+$backupExePath = Join-Path $currentPath "$exeName.bak"
+$backupExeName = Split-Path -Leaf $backupExePath
+$stagedExePath = Join-Path $stagedPath $exeName
 
 try {
-    Write-Log "Update started: staged=$stagedPath target=$currentPath"
+    Write-Log "Update started: staged=$stagedExePath target=$exePath"
+
+    if (-not (Test-Path -LiteralPath $stagedExePath)) {
+        throw "Updated executable not found: $stagedExePath"
+    }
 
     $parentPid = 0
     [void][int]::TryParse($env:ORE_METRONOME_PARENT_PID, [ref]$parentPid)
@@ -32,15 +55,28 @@ try {
         }
     }
 
-    if (Test-Path -LiteralPath $backupPath) {
-        Remove-Item -LiteralPath $backupPath -Recurse -Force
+    if (Test-Path -LiteralPath $backupExePath) {
+        Remove-Item -LiteralPath $backupExePath -Force
     }
-    Rename-Item -LiteralPath $currentPath -NewName $backupName
-    Move-Item -LiteralPath $stagedPath -Destination $currentPath
 
-    if (-not (Test-Path -LiteralPath $exePath)) {
-        throw "Updated executable not found: $exePath"
+    # The exe may stay locked briefly after the parent exits (PyInstaller bootloader),
+    # so retry the rename for a while before giving up.
+    if (Test-Path -LiteralPath $exePath) {
+        $deadline = (Get-Date).AddSeconds(60)
+        while ($true) {
+            try {
+                Rename-Item -LiteralPath $exePath -NewName $backupExeName
+                break
+            }
+            catch {
+                if ((Get-Date) -ge $deadline) {
+                    throw
+                }
+                Start-Sleep -Milliseconds 500
+            }
+        }
     }
+    Move-Item -LiteralPath $stagedExePath -Destination $exePath
 
     if (-not $SkipLaunch) {
         $process = Start-Process -FilePath $exePath -WorkingDirectory $currentPath -PassThru
@@ -50,18 +86,18 @@ try {
         }
     }
 
-    Remove-Item -LiteralPath $backupPath -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-BackupExe
     Write-Log 'Update completed'
     exit 0
 }
 catch {
     Write-Log "Update failed: $($_.Exception.Message)"
     try {
-        if (Test-Path -LiteralPath $backupPath) {
-            if (Test-Path -LiteralPath $currentPath) {
-                Remove-Item -LiteralPath $currentPath -Recurse -Force
+        if (Test-Path -LiteralPath $backupExePath) {
+            if (Test-Path -LiteralPath $exePath) {
+                Remove-Item -LiteralPath $exePath -Force
             }
-            Rename-Item -LiteralPath $backupPath -NewName (Split-Path -Leaf $currentPath)
+            Rename-Item -LiteralPath $backupExePath -NewName $exeName
             Write-Log 'Previous version restored'
         }
     }
