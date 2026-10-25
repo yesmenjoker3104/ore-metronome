@@ -16,7 +16,7 @@ PC 用メトロノームアプリの仕様と設計方針をまとめる。
 | 言語 / GUI | Python 3.13 + PySide6 |
 | クリック音 | 標準音をプログラムで生成（外部ファイル不要）。加えて WAV 等のファイルで差し替え可能 |
 | 機能 | BPM 設定 / 拍子設定 / 表拍アクセント / タップテンポ / 細分音符 / 拍の視覚表示 / キーボードショートカット / プリセット保存・読込 / 音量調整 |
-| 配布 | ソースからの実行に加え、PyInstaller で exe 化（`--onedir` / `--windowed`） |
+| 配布 | ソースからの実行に加え、PyInstaller で exe 化（`--onefile` / `--windowed`。exe 1 つを `dist\ore-metronome\` に入れて zip にする） |
 | ドラマー向け機能（実装対象） | カウントイン / 基準音符の選択 / ハーフタイム・ダブルタイム / 目標 BPM でのステップアップ / スウィング量（3.16） |
 | 配置先 | `ore-metronome/`（ワークスペース直下） |
 | バージョン管理 | セマンティックバージョニング（SemVer）でリリースを管理する（3.14） |
@@ -534,7 +534,7 @@ python -m ruff check src tests
 
 ## 8. 配布・リリース
 
-- `scripts\build.ps1` で、`make_icon.py` により `assets\icon.ico` を作り、`make_version_info.py` により exe のバージョン情報を作ったあと、`pyinstaller --noconfirm --clean --onedir --windowed --name ore-metronome --icon src\ore_metronome\assets\icon.ico --version-file build\version_info.txt --add-data "data\app_icon.png;data" --add-data "src\ore_metronome\infrastructure\update\apply_update.ps1;ore_metronome\infrastructure\update" launch.py` を実行する（アイコンは 3.13 参照）。
+- `scripts\build.ps1` で、`make_icon.py` により `assets\icon.ico` を作り、`make_version_info.py` により exe のバージョン情報を作ったあと、`pyinstaller --noconfirm --clean --onefile --windowed --name ore-metronome --icon src\ore_metronome\assets\icon.ico --version-file build\version_info.txt --add-data "data\app_icon.png;data" --add-data "src\ore_metronome\infrastructure\update\apply_update.ps1;ore_metronome\infrastructure\update" launch.py` を実行する（アイコンは 3.13 参照）。生成された `dist\ore-metronome.exe` は `dist\ore-metronome\` に移し、`_internal` を含まない 1 つの exe だけを zip にする。
 - `apply_update.ps1` は `--add-data` で同梱する（3.15 の差し替え処理で使う）。
 - zip は `ZipArchive` で、先頭フォルダを `ore-metronome/` にし、エントリ名を `/` 区切りで作る。Windows PowerShell 5.1 の `Compress-Archive` と `ZipFile.CreateFromDirectory` は `\` 区切りの zip を作るため使わない（更新の展開処理は `\` を拒否する）。
 - 出力は `dist\ore-metronome\` と、zip（`dist\ore-metronome-windows-x64.zip`）と、その sha256（`dist\ore-metronome-windows-x64.zip.sha256`）。

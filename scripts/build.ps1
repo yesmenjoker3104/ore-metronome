@@ -19,7 +19,7 @@ Invoke-Python -m pip install -e '.[dev]'
 Invoke-Python scripts\make_version_info.py
 Invoke-Python scripts\make_icon.py
 
-Invoke-Python -m PyInstaller --noconfirm --clean --onedir --windowed `
+Invoke-Python -m PyInstaller --noconfirm --clean --onefile --windowed `
     --name ore-metronome `
     --icon src\ore_metronome\assets\icon.ico `
     --version-file build\version_info.txt `
@@ -27,10 +27,18 @@ Invoke-Python -m PyInstaller --noconfirm --clean --onedir --windowed `
     --add-data 'src\ore_metronome\infrastructure\update\apply_update.ps1;ore_metronome\infrastructure\update' `
     launch.py
 
-$appDirectory = Join-Path $projectRoot 'dist\ore-metronome'
-if (-not (Test-Path -LiteralPath (Join-Path $appDirectory 'ore-metronome.exe'))) {
-    throw 'PyInstaller did not create dist\ore-metronome\ore-metronome.exe'
+$builtExecutable = Join-Path $projectRoot 'dist\ore-metronome.exe'
+if (-not (Test-Path -LiteralPath $builtExecutable)) {
+    throw 'PyInstaller did not create dist\ore-metronome.exe'
 }
+
+# 前回の onedir 出力（_internal を含む）が残らないよう、フォルダを作り直して exe だけを入れる。
+$appDirectory = Join-Path $projectRoot 'dist\ore-metronome'
+if (Test-Path -LiteralPath $appDirectory) {
+    Remove-Item -LiteralPath $appDirectory -Recurse -Force
+}
+New-Item -ItemType Directory -Path $appDirectory | Out-Null
+Move-Item -LiteralPath $builtExecutable -Destination $appDirectory
 
 $archiveName = 'ore-metronome-windows-x64.zip'
 $archivePath = Join-Path $projectRoot "dist\$archiveName"
