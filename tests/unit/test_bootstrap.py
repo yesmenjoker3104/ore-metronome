@@ -53,3 +53,13 @@ def test_build_service_restores_saved_settings(tmp_path):
     reloaded = build_service(settings_file=path, stream_factory=fake_factory)
 
     assert reloaded.settings.bpm == 150
+
+def test_build_service_falls_back_when_settings_file_is_broken(tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_text("{ broken", encoding="utf-8")
+
+    service = build_service(settings_file=path, stream_factory=fake_factory)
+
+    assert service.settings.bpm == 120
+    assert not path.exists()
+    assert (tmp_path / "settings.json.bak").exists()
