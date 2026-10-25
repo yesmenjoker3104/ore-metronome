@@ -1,6 +1,5 @@
 from enum import Enum
 from pathlib import Path
-from typing import Literal
 
 import numpy as np
 import soundfile as sf
@@ -14,7 +13,6 @@ DEFAULT_SAMPLE_RATE = 44100
 DEFAULT_DURATION_MS = 35
 
 AudioSamples = NDArray[np.float32]
-Waveform = Literal["sine", "triangle"]
 
 
 class ClickKind(Enum):
@@ -55,7 +53,6 @@ def generate_click(
     amplitude: float,
     sample_rate: int,
     duration_ms: float = DEFAULT_DURATION_MS,
-    waveform: Waveform = "sine",
 ) -> AudioSamples:
     if sample_rate <= 0:
         raise ValueError("sample_rate must be positive")
@@ -70,19 +67,15 @@ def generate_click(
     time = np.arange(sample_count, dtype=np.float64) / sample_rate
     phase = 2 * np.pi * frequency * time
 
-    if waveform == "triangle":
-        wave = 2 / np.pi * np.arcsin(np.sin(phase))
-    else:
-        wave = np.sin(phase)
     envelope = np.linspace(1.0, 0.0, sample_count, dtype=np.float64)
 
-    return (amplitude * wave * envelope).astype(np.float32)
+    return (amplitude * np.sin(phase) * envelope).astype(np.float32)
 
 
 def generate_default_sounds(
     sample_rate: int = DEFAULT_SAMPLE_RATE,
 ) -> SoundKit:
-    # 連符はメインの拍と音色を変えて、聞き分けられるようにする（三角波）。
+    # 連符は拍と同じ正弦波で、音量だけ小さくする。音程の違いで聞き分ける。
     return SoundKit(
         accent=generate_click(
             frequency=1800,
@@ -96,15 +89,13 @@ def generate_default_sounds(
         ),
         subdivision_accent=generate_click(
             frequency=1000,
-            amplitude=0.6,
+            amplitude=0.5,
             sample_rate=sample_rate,
-            waveform="triangle",
         ),
         subdivision_normal=generate_click(
             frequency=800,
-            amplitude=0.4,
+            amplitude=0.3,
             sample_rate=sample_rate,
-            waveform="triangle",
         ),
     )
 
