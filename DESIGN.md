@@ -388,6 +388,7 @@ ore-metronome/
     make_icon.py            # data/app_icon.png から assets/icon.ico を生成
   .github/workflows/
     ci.yml                  # push / PR で ruff と pytest を実行（10 節 18）
+    release.yml             # vX.Y.Z タグの push で、ビルドと GitHub Release 作成（§8）
   src/ore_metronome/
     __init__.py
     __main__.py             # python -m ore_metronome
@@ -539,12 +540,12 @@ python -m ruff check src tests
 - 出力は `dist\ore-metronome\` と、zip（`dist\ore-metronome-windows-x64.zip`）と、その sha256（`dist\ore-metronome-windows-x64.zip.sha256`）。
 - 既定音は生成のため同梱ファイルは不要。
 - リリース手順（`Proposed`）:
-  1. `version.py` と `CHANGELOG.md` を更新し、テストが通ることを確認する。
+  1. `__version__`（`src/ore_metronome/version.py`）と `CHANGELOG.md` を更新し、テストが通ることを確認する。
   2. `main` に commit し、`vX.Y.Z` タグを打って push する。
-  3. `scripts\build.ps1` で zip と sha256 を作る。
-  4. `gh release create vX.Y.Z --notes-file <CHANGELOG の該当版を抜き出したファイル>` で GitHub Release を作り、zip と sha256 を添付する。Release の本文は、更新ダイアログに表示される。
+  3. `.github/workflows/release.yml` が `windows-latest` で動く。版番号とタグの一致を確認し、`scripts\build.ps1` で zip と sha256 を作り、`CHANGELOG.md` の該当版を Release の本文にして `gh release create` で Release を作り、zip と sha256 を添付する。Release の本文は、更新ダイアログに表示される。
+  4. Actions の完了と Release の添付ファイルを確認する。
   5. 更新確認が新版を検出することを、旧版の exe から手動で確認する。
-- 配布の自動化（GitHub Actions でのリリース作成）は行わない。`ci.yml` は ruff と pytest のみ実行する。
+- 配布は GitHub Actions で自動化する（`release.yml`）。`ci.yml` は push / PR で ruff と pytest を実行する。
 
 ## 9. スコープ外（今回作らないもの）
 
