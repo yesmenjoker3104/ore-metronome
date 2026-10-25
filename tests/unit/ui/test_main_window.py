@@ -310,6 +310,20 @@ def test_tap_button_sits_right_of_bpm_display(qtbot):
     assert abs(tap_rect.center().y() - spin_rect.center().y()) < spin_rect.height() / 2
 
 
+def test_tap_button_keeps_font_size_while_measuring(qtbot):
+    window, _ = make_window(qtbot)
+    window.show()
+    qtbot.waitExposed(window)
+    font_size = window._tap.font().pointSizeF()
+    size = window._tap.size()
+
+    window._on_tap()
+    qtbot.wait(10)
+
+    assert window._tap.font().pointSizeF() == font_size
+    assert window._tap.size() == size
+
+
 def test_tap_button_shows_measuring_state_until_reset(qtbot):
     window, _ = make_window(qtbot)
     window._tap_timer.setInterval(20)

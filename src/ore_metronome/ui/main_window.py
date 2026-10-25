@@ -91,7 +91,7 @@ QPushButton#mask:checked {
 }
 QPushButton#tap[measuring="true"] {
     background-color: #1F3D2C;
-    border: 2px solid #00E676;
+    border: 1px solid #00E676;
     color: #00E676;
     font-weight: bold;
 }
@@ -177,6 +177,7 @@ class MainWindow(QWidget):
 
         self._tap = QPushButton("タップ")
         self._tap.setObjectName("tap")
+        self._tap.setFont(self.font())
         self._tap.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._tap_timer = QTimer(self)
         self._tap_timer.setSingleShot(True)
