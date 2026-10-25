@@ -5,6 +5,7 @@ import sounddevice as sd
 
 from ore_metronome.application.metronome_service import MetronomeService
 from ore_metronome.application.ports import BeatEventSink
+from ore_metronome.application.update_service import UpdateService
 from ore_metronome.domain.models import MetronomeSettings
 from ore_metronome.infrastructure.audio.engine import (
     DEFAULT_SAMPLE_RATE,
@@ -12,11 +13,14 @@ from ore_metronome.infrastructure.audio.engine import (
     StreamFactory,
 )
 from ore_metronome.infrastructure.audio.sounds import generate_default_sounds
-from ore_metronome.infrastructure.persistence.paths import settings_path
+from ore_metronome.infrastructure.persistence.paths import settings_path, update_preferences_path
 from ore_metronome.infrastructure.persistence.settings_repository import (
     SettingsDataError,
     SettingsRepository,
 )
+from ore_metronome.infrastructure.persistence.update_store import JsonUpdateStore
+from ore_metronome.infrastructure.update.gateway import GitHubUpdateGateway
+from ore_metronome.version import __version__
 
 
 class _FallbackSettingsStore:
@@ -54,3 +58,8 @@ def build_service(
         audio_output=engine,
         settings_store=store,
     )
+
+
+def build_update_service(*, preferences_file: Path | None = None) -> UpdateService:
+    store = JsonUpdateStore(preferences_file or update_preferences_path())
+    return UpdateService(GitHubUpdateGateway(), store, __version__)

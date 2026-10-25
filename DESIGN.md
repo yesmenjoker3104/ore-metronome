@@ -92,7 +92,10 @@ PC 用メトロノームアプリの仕様と設計方針をまとめる。
 
 ### 3.7 拍の視覚表示
 
-- 拍数分の丸いインジケーターを並べ、現在鳴っている拍を点灯する。
+- 拍数分の丸いインジケーターを、左から右へ一列ずつ並べる。1 行は 6 個までで、7 個目から次の行に折り返す（最大 3 行）。現在鳴っている拍を点灯する。
+- 各行は、その行に並ぶ点の数に合わせて横の中央に置く。拍を足すと行内の点は中央を保つように位置が変わる。
+- 使っている行は、3 行ぶんの高さの中で縦の中央に置く。
+- 高さは 3 行ぶんを常に確保し、拍数が変わっても下の要素が動かないようにする。
 - 表拍は色を変えて区別する（アクセント OFF 時は区別しない）。
 - 拍ごとに 3 状態を持つ。インジケーターの点をクリックするたびに循環する。
   - アクセント（濃いグリーン・塗りつぶし）→ 通常（薄いグレー・塗りつぶし）→ 無音（中空の輪）→ アクセント
@@ -136,6 +139,7 @@ PC 用メトロノームアプリの仕様と設計方針をまとめる。
   - アクセント（グリーン）: `#00E676`（再生中・点灯・選択中の強調）
   - 非選択・消灯: `#1F3D2C`（暗いグリーン）
 - 画面: 単一画面で完結させる（参考: Tempo の単一画面 UI）。
+  - 各要素は見出し付きの枠で囲む（拍／テンポ／テンポ調整・音量（横並び）／拍子／連符）。再生ボタンは枠なしで最下部に置く。連符の位置のボタンは「連符」の枠の中、連符のコンボの右に 1 行で置く（連符が「なし」のときは隠す）。
   - 上部: 大きな BPM 表示とスライダー
   - 中央: 拍の LED 表示（点灯時は短くパルスする）
   - 中段: 拍子・細分の選択と位置マスクのトグル
@@ -269,6 +273,11 @@ PC 用メトロノームアプリの仕様と設計方針をまとめる。
   6. 成功したら `.bak` を削除する。
 - 実行中のフォルダは自分自身で置き換えられないため、差し替えは別プロセスで行う（`Proposed`）。
 - 更新で保存データは消さない。`%APPDATA%\ore-metronome\` は更新の対象外。
+- 実装（v0.1.0）:
+  - 更新の設定（起動時の確認の ON/OFF、スキップした版）は `%APPDATA%\ore-metronome\update.json` に保存する。設定ファイルの保存で上書きされないよう、別ファイルにしている。
+  - ヘルプメニューに「更新を確認...」「起動時に更新を確認」「バージョン情報」を置く。
+  - 起動時の確認と、更新の適用は配布版（exe）でだけ行う。開発実行（`python -m ore_metronome` など）では、手動確認を押しても「開発実行中はアップデートを適用できません。」と表示するだけにする。
+  - 配布版で新しい版が見つかると、更新内容（GitHub Release の本文）を表示し、「更新する」「後で」「この版をスキップ」を選ぶ。
 - コード署名は未実施のため、Windows の SmartScreen 警告が出る可能性がある（10 節 6）。
 
 ### 3.16 ドラマー向け機能
@@ -376,6 +385,7 @@ ore-metronome/
   scripts/
     build.ps1               # exe・zip・sha256 を作る
     make_version_info.py    # exe のファイルプロパティ用 version_info を version.py から生成
+    make_icon.py            # data/app_icon.png から assets/icon.ico を生成
   .github/workflows/
     ci.yml                  # push / PR で ruff と pytest を実行（10 節 18）
   src/ore_metronome/
@@ -523,15 +533,18 @@ python -m ruff check src tests
 
 ## 8. 配布・リリース
 
-- `scripts\build.ps1` で、`make_version_info.py` により exe のバージョン情報を作ったあと、`pyinstaller --noconfirm --clean --onedir --windowed --icon src\ore_metronome\assets\icon.ico --version-file build\version_info.txt launch.py --name ore-metronome` を実行する（アイコンは 3.13 参照）。
+- `scripts\build.ps1` で、`make_icon.py` により `assets\icon.ico` を作り、`make_version_info.py` により exe のバージョン情報を作ったあと、`pyinstaller --noconfirm --clean --onedir --windowed --name ore-metronome --icon src\ore_metronome\assets\icon.ico --version-file build\version_info.txt --add-data "data\app_icon.png;data" --add-data "src\ore_metronome\infrastructure\update\apply_update.ps1;ore_metronome\infrastructure\update" launch.py` を実行する（アイコンは 3.13 参照）。
+- `apply_update.ps1` は `--add-data` で同梱する（3.15 の差し替え処理で使う）。
+- zip は `ZipArchive` で、先頭フォルダを `ore-metronome/` にし、エントリ名を `/` 区切りで作る。Windows PowerShell 5.1 の `Compress-Archive` と `ZipFile.CreateFromDirectory` は `\` 区切りの zip を作るため使わない（更新の展開処理は `\` を拒否する）。
 - 出力は `dist\ore-metronome\` と、zip（`dist\ore-metronome-windows-x64.zip`）と、その sha256（`dist\ore-metronome-windows-x64.zip.sha256`）。
 - 既定音は生成のため同梱ファイルは不要。
 - リリース手順（`Proposed`）:
   1. `version.py` と `CHANGELOG.md` を更新し、テストが通ることを確認する。
   2. `main` に commit し、`vX.Y.Z` タグを打って push する。
   3. `scripts\build.ps1` で zip と sha256 を作る。
-  4. `gh release create vX.Y.Z` で GitHub Release を作り、zip と sha256 を添付する。
+  4. `gh release create vX.Y.Z --notes-file <CHANGELOG の該当版を抜き出したファイル>` で GitHub Release を作り、zip と sha256 を添付する。Release の本文は、更新ダイアログに表示される。
   5. 更新確認が新版を検出することを、旧版の exe から手動で確認する。
+- 配布の自動化（GitHub Actions でのリリース作成）は行わない。`ci.yml` は ruff と pytest のみ実行する。
 
 ## 9. スコープ外（今回作らないもの）
 

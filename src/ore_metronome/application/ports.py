@@ -1,8 +1,10 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from ore_metronome.domain.models import MetronomeSettings
+from ore_metronome.domain.update import ReleaseInfo, UpdatePreferences
 
 
 @dataclass(frozen=True)
@@ -53,5 +55,31 @@ class BeatEventSink(Protocol):
     def publish(self, event: BeatEvent) -> None:
         """Publishes a beat event to the sink."""
         ...
+
+@runtime_checkable
+class UpdateGateway(Protocol):
+    def fetch_latest_release(self) -> ReleaseInfo | None:
+        """Returns the latest stable release, or None if no release exists."""
+        ...
+
+    def download_release(self, release: ReleaseInfo) -> Path:
+        """Downloads and verifies the release, and returns the extracted application folder."""
+        ...
+
+    def start_update(self, staged_application: Path) -> None:
+        """Starts a separate process that replaces the running application."""
+        ...
+
+
+@runtime_checkable
+class UpdateStore(Protocol):
+    def load(self) -> UpdatePreferences:
+        """Loads the update preferences, or returns the defaults if they are missing."""
+        ...
+
+    def save(self, preferences: UpdatePreferences) -> None:
+        """Saves the update preferences."""
+        ...
+
 
 BeatEventCallback = Callable[[BeatEvent], None]

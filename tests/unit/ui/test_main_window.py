@@ -1,7 +1,11 @@
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMenuBar
 
 from ore_metronome.application.metronome_service import MetronomeService
+from ore_metronome.application.update_service import UpdateService
 from ore_metronome.domain.models import BeatLevel
+from ore_metronome.domain.update import ReleaseInfo, UpdatePreferences
+from ore_metronome.ui import main_window
 from ore_metronome.ui.controller import MAX_BPM, MetronomeController
 from ore_metronome.ui.main_window import MainWindow
 
@@ -28,11 +32,87 @@ class FakeStore:
         pass
 
 
-def make_window(qtbot):
+def make_window(qtbot, update_service=None):
     service = MetronomeService(audio_output=FakeAudio(), settings_store=FakeStore())
-    window = MainWindow(MetronomeController(service))
+    window = MainWindow(MetronomeController(service), update_service)
     qtbot.addWidget(window)
     return window, service
+
+
+class FakeUpdateGateway:
+    def __init__(self) -> None:
+        self.fetch_count = 0
+
+    def fetch_latest_release(self) -> ReleaseInfo | None:
+        self.fetch_count += 1
+        return None
+
+    def download_release(self, release):
+        raise AssertionError("download must not run in these tests")
+
+    def start_update(self, staged_application) -> None:
+        raise AssertionError("update must not start in these tests")
+
+
+class FakeUpdateStore:
+    def __init__(self, check_on_startup: bool) -> None:
+        self.preferences = UpdatePreferences(check_on_startup=check_on_startup)
+
+    def load(self) -> UpdatePreferences:
+        return self.preferences
+
+    def save(self, preferences: UpdatePreferences) -> None:
+        self.preferences = preferences
+
+
+def make_update_service(check_on_startup: bool = True):
+    gateway = FakeUpdateGateway()
+    service = UpdateService(gateway, FakeUpdateStore(check_on_startup), "0.1.0")
+    return service, gateway
+
+
+def help_menu_actions(window):
+    menu_bar = window.findChild(QMenuBar)
+    return {action.text(): action for action in menu_bar.actions()[0].menu().actions()}
+
+
+def test_startup_check_is_skipped_outside_frozen_build(qtbot):
+    update_service, gateway = make_update_service()
+
+    make_window(qtbot, update_service)
+
+    assert gateway.fetch_count == 0
+
+
+def test_startup_check_runs_in_frozen_build_when_enabled(qtbot, monkeypatch):
+    monkeypatch.setattr(main_window, "_is_frozen", lambda: True)
+    update_service, gateway = make_update_service(check_on_startup=True)
+
+    window, _ = make_window(qtbot, update_service)
+
+    qtbot.waitUntil(lambda: gateway.fetch_count == 1)
+    window._active_task.wait()
+
+
+def test_manual_check_reports_latest_version(qtbot, monkeypatch):
+    monkeypatch.setattr(main_window, "_is_frozen", lambda: True)
+    shown = []
+    monkeypatch.setattr(main_window.QMessageBox, "information", lambda *args: shown.append(args))
+    update_service, gateway = make_update_service(check_on_startup=False)
+    window, _ = make_window(qtbot, update_service)
+
+    window._start_update_check(manual=True)
+
+    qtbot.waitUntil(lambda: len(shown) == 1)
+    window._active_task.wait()
+    assert gateway.fetch_count == 1
+
+
+def test_startup_toggle_reflects_saved_preference(qtbot):
+    update_service, _ = make_update_service(check_on_startup=False)
+    window, _ = make_window(qtbot, update_service)
+
+    assert help_menu_actions(window)["起動時に更新を確認"].isChecked() is False
 
 
 def test_initial_values_follow_settings(qtbot):
@@ -176,13 +256,19 @@ def test_clicking_beat_indicator_cycles_its_level(qtbot):
     assert window._indicator._levels[1] is BeatLevel.ACCENT
 
 
-def test_window_fits_sixteen_beats_in_two_rows(qtbot):
+def test_window_width_fits_six_dots_per_row_and_height_does_not_change_with_beats(qtbot):
     window, _ = make_window(qtbot)
     window.show()
-    window._indicator.set_layout([BeatLevel.NORMAL] * 16)
+    indicator = window._indicator
+    assert indicator.minimumHeight() == indicator.maximumHeight()
 
-    assert window.size() == QSize(640, 480)
-    assert window._indicator._rows(window._indicator._columns()) == 2
+    window_heights = set()
+    for beats in (1, 16):
+        indicator.set_layout([BeatLevel.NORMAL] * beats)
+        window_heights.add(window.height())
+
+    assert window.width() == 496
+    assert len(window_heights) == 1
 
 
 def test_tap_button_sits_right_of_bpm_display(qtbot):

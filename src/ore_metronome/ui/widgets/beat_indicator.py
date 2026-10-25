@@ -4,12 +4,17 @@ from PySide6.QtCore import QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
+from ore_metronome.domain.meter import MAX_NUMERATOR
 from ore_metronome.domain.models import BeatLevel
 
-DOT_SIZE = 56
-DOT_GAP = 24
+DOT_SIZE = 40
+DOT_GAP = 14
 DOT_PITCH = DOT_SIZE + DOT_GAP
 SILENT_RING_WIDTH = 4
+BEAT_ROWS = 3
+# 最大拍数を BEAT_ROWS 行に収める列数（16 拍なら 6 列）。
+BEAT_COLUMNS = -(-MAX_NUMERATOR // BEAT_ROWS)
+TOP_MARGIN = 4
 
 # アクセントは濃く、アクセントなしは薄く、無音は輪郭だけで示す。
 ACCENT_COLOR = QColor("#1F7A4A")
@@ -27,18 +32,13 @@ class BeatIndicator(QWidget):
         super().__init__(parent)
         self._levels: tuple[BeatLevel, ...] = ()
         self._active_beat: int | None = None
-        self._update_minimum_height()
+        self.setFixedHeight(self._content_height(BEAT_ROWS) + TOP_MARGIN * 2)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def set_layout(self, levels: Sequence[BeatLevel]) -> None:
         self._levels = tuple(levels)
-        self._update_minimum_height()
         self.update()
-
-    def resizeEvent(self, event) -> None:
-        self._update_minimum_height()
-        super().resizeEvent(event)
 
     def set_active_beat(self, beat_index: int | None) -> None:
         self._active_beat = beat_index
@@ -54,9 +54,8 @@ class BeatIndicator(QWidget):
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        columns = self._columns()
         for index, level in enumerate(self._levels):
-            rect = self._dot_rect(index, columns)
+            rect = self._dot_rect(index)
             self._paint_dot(painter, rect, level, index == self._active_beat)
         painter.end()
 
@@ -83,38 +82,29 @@ class BeatIndicator(QWidget):
         painter.setBrush(color)
         painter.drawEllipse(rect)
 
-    def _dot_rect(self, index: int, columns: int) -> QRect:
+    def _dot_rect(self, index: int) -> QRect:
+        row, column = divmod(index, BEAT_COLUMNS)
         beats = len(self._levels)
-        rows = self._rows(columns)
-        top = (self.height() - self._content_height(rows)) // 2
-        row, column = divmod(index, columns)
-        row_count = min(columns, beats - row * columns)
-        left = (self.width() - self._row_width(row_count)) // 2
-        return QRect(left + column * DOT_PITCH, top + row * DOT_PITCH, DOT_SIZE, DOT_SIZE)
+        rows_used = self._rows_used(beats)
+        # 使っている行だけを、3 行ぶんの高さの中で縦の中央に置く。
+        offset = (self._content_height(BEAT_ROWS) - self._content_height(rows_used)) // 2
+        top = TOP_MARGIN + offset + row * DOT_PITCH
+        # 各行に並ぶ点の数に合わせて、その行を横の中央に置く。
+        dots_in_row = min(BEAT_COLUMNS, beats - row * BEAT_COLUMNS)
+        left = (self.width() - self._span(dots_in_row)) // 2 + column * DOT_PITCH
+        return QRect(left, top, DOT_SIZE, DOT_SIZE)
 
     def _beat_at(self, point: QPoint) -> int | None:
-        columns = self._columns()
         for index in range(len(self._levels)):
-            if self._dot_rect(index, columns).contains(point):
+            if self._dot_rect(index).contains(point):
                 return index
         return None
 
-    def _columns(self) -> int:
-        # Fit as many dots as the current width allows, at least one.
-        return max(1, (self.width() + DOT_GAP) // DOT_PITCH)
-
-    def _rows(self, columns: int) -> int:
-        beats = len(self._levels)
-        if beats == 0:
-            return 1
-        return -(-beats // columns)
+    def _rows_used(self, beats: int) -> int:
+        return max(1, -(-beats // BEAT_COLUMNS))
 
     def _content_height(self, rows: int) -> int:
         return rows * DOT_SIZE + (rows - 1) * DOT_GAP
 
-    def _row_width(self, count: int) -> int:
+    def _span(self, count: int) -> int:
         return count * DOT_SIZE + (count - 1) * DOT_GAP
-
-    def _update_minimum_height(self) -> None:
-        rows = self._rows(self._columns())
-        self.setMinimumHeight(self._content_height(rows) + 8)

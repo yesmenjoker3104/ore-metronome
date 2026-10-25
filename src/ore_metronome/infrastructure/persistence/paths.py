@@ -20,3 +20,7 @@ def presets_path() -> Path:
 
 def setlists_path() -> Path:
     return app_data_dir() / "setlists.json"
+
+
+def update_preferences_path() -> Path:
+    return app_data_dir() / "update.json"

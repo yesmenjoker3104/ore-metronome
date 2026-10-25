@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run lint
+        shell: pwsh
+        run: python -m ruff check src tests
+
+      - name: Run tests
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          GITHUB_REF_TYPE: ${{ github.ref_type }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: python -m pytest -q

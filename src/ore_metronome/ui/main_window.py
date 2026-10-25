@@ -1,12 +1,18 @@
+import sys
 import time
 from collections.abc import Callable
+from typing import Any
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLayout,
+    QMenuBar,
+    QMessageBox,
     QPushButton,
     QSlider,
     QSpinBox,
@@ -14,19 +20,24 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ore_metronome.application.update_service import UpdateService
 from ore_metronome.domain.meter import ALLOWED_DENOMINATORS, MAX_NUMERATOR, MIN_NUMERATOR
 from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME
 from ore_metronome.domain.subdivision import ALLOWED_COUNTS
 from ore_metronome.domain.tap_tempo import RESET_SECONDS
+from ore_metronome.domain.update import ReleaseInfo
+from ore_metronome.ui.background_task import BackgroundTask
 from ore_metronome.ui.controller import MAX_BPM, MIN_BPM, MetronomeController
+from ore_metronome.ui.dialogs.update_dialog import UpdateChoice, UpdateDialog
 from ore_metronome.ui.widgets.beat_indicator import BeatIndicator
+from ore_metronome.version import __version__
 
 TICK_INTERVAL_MS = 15
 
-WINDOW_WIDTH = 640
+WINDOW_WIDTH = 496
 WINDOW_HEIGHT = 480
 
-MASK_BUTTON_SIZE = 44
+MASK_BUTTON_SIZE = 28
 
 SUBDIVISION_LABELS = {
     1: "なし",
@@ -49,13 +60,13 @@ QSpinBox {
     background-color: #161616;
     border: 1px solid #1F3D2C;
     border-radius: 8px;
-    padding: 8px;
+    padding: 4px 8px;
 }
 QPushButton {
     background-color: #161616;
     border: 1px solid #1F3D2C;
     border-radius: 12px;
-    padding: 16px;
+    padding: 8px;
 }
 QPushButton:hover {
     border-color: #00E676;
@@ -99,14 +110,48 @@ QSlider::handle:horizontal {
     margin: -12px 0;
     border-radius: 16px;
 }
+QGroupBox {
+    border: 1px solid #1F3D2C;
+    border-radius: 12px;
+    margin-top: 12px;
+    padding: 6px 8px 6px 8px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 12px;
+    padding: 0 6px;
+    color: #00E676;
+}
 """
 
 
+def _is_frozen() -> bool:
+    return bool(getattr(sys, "frozen", False))
+
+
+def _framed(title: str, content: QWidget | QLayout) -> QGroupBox:
+    box = QGroupBox(title)
+    layout = QVBoxLayout(box)
+    if isinstance(content, QLayout):
+        layout.addLayout(content)
+    else:
+        layout.addWidget(content)
+    return box
+
+
 class MainWindow(QWidget):
-    def __init__(self, controller: MetronomeController) -> None:
+    def __init__(
+        self,
+        controller: MetronomeController,
+        update_service: UpdateService | None = None,
+    ) -> None:
         super().__init__()
         self._controller = controller
-        self.setWindowTitle("Ore Metronome")
+        self._update_service = update_service
+        self._active_task: BackgroundTask | None = None
+        self._manual_check = False
+        self.setWindowTitle(f"Ore Metronome v{__version__}")
         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
         font = self.font()
         font.setPointSizeF(font.pointSizeF() * 2)
@@ -162,7 +207,7 @@ class MainWindow(QWidget):
         self._denominator_combo.currentIndexChanged.connect(self._on_meter_changed)
 
         self._subdivision_combo = QComboBox()
-        self._subdivision_combo.setMinimumWidth(160)
+        self._subdivision_combo.setMinimumWidth(100)
         self._subdivision_combo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         for count in sorted(ALLOWED_COUNTS):
             self._subdivision_combo.addItem(SUBDIVISION_LABELS[count], count)
@@ -173,7 +218,7 @@ class MainWindow(QWidget):
         self._mask_container = QWidget()
         mask_layout = QHBoxLayout(self._mask_container)
         mask_layout.setContentsMargins(0, 0, 0, 0)
-        mask_layout.setSpacing(4)
+        mask_layout.setSpacing(2)
         self._mask_buttons: list[QPushButton] = []
         for index in range(max(ALLOWED_COUNTS)):
             button = QPushButton(str(index + 1))
@@ -184,7 +229,6 @@ class MainWindow(QWidget):
             button.clicked.connect(lambda checked, i=index: self._on_mask_clicked(i, checked))
             mask_layout.addWidget(button)
             self._mask_buttons.append(button)
-        mask_layout.addStretch()
         self._subdivision_combo.currentIndexChanged.connect(self._on_subdivision_changed)
         self._refresh_mask_buttons()
 
@@ -218,18 +262,126 @@ class MainWindow(QWidget):
         subdivision_row = QHBoxLayout()
         subdivision_row.addWidget(QLabel("連符"))
         subdivision_row.addWidget(self._subdivision_combo)
+        subdivision_row.addWidget(self._mask_container)
         subdivision_row.addStretch()
         layout = QVBoxLayout(self)
-        layout.addWidget(self._indicator)
-        layout.addLayout(row)
-        layout.addWidget(self._slider)
-        layout.addLayout(meter_row)
-        layout.addLayout(subdivision_row)
-        layout.addWidget(self._mask_container)
+        layout.setMenuBar(self._build_menu_bar())
+        layout.addWidget(_framed("拍", self._indicator))
+        layout.addWidget(_framed("テンポ", row))
+        slider_row = QHBoxLayout()
+        slider_row.addWidget(_framed("テンポ調整", self._slider), 1)
+        slider_row.addWidget(_framed("音量", self._volume_slider), 1)
+        layout.addLayout(slider_row)
+        layout.addWidget(_framed("拍子", meter_row))
+        layout.addWidget(_framed("連符", subdivision_row))
         layout.addWidget(self._toggle)
-        layout.addWidget(self._volume_slider)
         layout.addStretch()
         self.setStyleSheet(STYLE_SHEET)
+        if (
+            update_service is not None
+            and _is_frozen()
+            and update_service.preferences().check_on_startup
+        ):
+            self._start_update_check(manual=False)
+
+    def _build_menu_bar(self) -> QMenuBar:
+        menu_bar = QMenuBar(self)
+        help_menu = menu_bar.addMenu("ヘルプ")
+        check_action = help_menu.addAction("更新を確認...")
+        startup_action = help_menu.addAction("起動時に更新を確認")
+        startup_action.setCheckable(True)
+        about_action = help_menu.addAction("バージョン情報")
+        check_action.triggered.connect(lambda: self._start_update_check(manual=True))
+        about_action.triggered.connect(self._show_about)
+        service = self._update_service
+        if service is None:
+            check_action.setEnabled(False)
+            startup_action.setEnabled(False)
+        else:
+            startup_action.setChecked(service.preferences().check_on_startup)
+            startup_action.toggled.connect(service.set_check_on_startup)
+        return menu_bar
+
+    def _show_about(self) -> None:
+        QMessageBox.about(self, "バージョン情報", f"Ore Metronome\nv{__version__}")
+
+    def _is_task_running(self) -> bool:
+        return self._active_task is not None and self._active_task.isRunning()
+
+    def _run_task(
+        self,
+        work: Callable[[], Any],
+        on_success: Callable[[Any], None],
+        on_failure: Callable[[str], None],
+    ) -> None:
+        task = BackgroundTask(work)
+        task.succeeded.connect(on_success)
+        task.failed.connect(on_failure)
+        self._active_task = task
+        task.start()
+
+    def _start_update_check(self, *, manual: bool) -> None:
+        service = self._update_service
+        if service is None or self._is_task_running():
+            return
+        if not _is_frozen():
+            if manual:
+                QMessageBox.information(
+                    self, "アップデート", "開発実行中はアップデートを適用できません。"
+                )
+            return
+        self._manual_check = manual
+        ignore_skipped = not manual
+        self._run_task(
+            lambda: service.find_newer_release(ignore_skipped=ignore_skipped),
+            self._on_check_succeeded,
+            self._on_check_failed,
+        )
+
+    def _on_check_succeeded(self, release: ReleaseInfo | None) -> None:
+        if release is None:
+            if self._manual_check:
+                QMessageBox.information(
+                    self, "アップデート", f"現在のバージョン v{__version__} は最新です。"
+                )
+            return
+        dialog = UpdateDialog(__version__, release, self)
+        dialog.exec()
+        service = self._update_service
+        if service is None:
+            return
+        if dialog.choice is UpdateChoice.SKIP:
+            service.skip_version(release.version)
+        elif dialog.choice is UpdateChoice.INSTALL:
+            self._start_download(release)
+
+    def _on_check_failed(self, message: str) -> None:
+        if self._manual_check:
+            QMessageBox.warning(self, "アップデート", f"更新の確認に失敗しました。\n{message}")
+
+    def _start_download(self, release: ReleaseInfo) -> None:
+        service = self._update_service
+        if service is None:
+            return
+        self._run_task(
+            lambda: service.download(release),
+            self._on_download_succeeded,
+            self._on_download_failed,
+        )
+
+    def _on_download_succeeded(self, staged: Any) -> None:
+        service = self._update_service
+        if service is None:
+            return
+        try:
+            service.apply(staged)
+        except Exception as error:
+            QMessageBox.warning(self, "アップデート", f"更新を開始できませんでした。\n{error}")
+            return
+        self.close()
+
+    def _on_download_failed(self, message: str) -> None:
+        QMessageBox.warning(self, "アップデート", f"ダウンロードに失敗しました。\n{message}")
 
     def _bind_shortcut(self, key: str, handler: Callable[[], None]) -> None:
         shortcut = QShortcut(QKeySequence(key), self)
