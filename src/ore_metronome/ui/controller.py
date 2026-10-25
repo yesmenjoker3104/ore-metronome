@@ -85,6 +85,9 @@ class MetronomeController:
     def set_volume(self, volume: int) -> None:
         self._service.set_volume(max(MIN_VOLUME, min(MAX_VOLUME, volume)))
 
+    def save_settings(self) -> None:
+        self._service.save_settings()
+
     def drain_beats(self) -> list[BeatEvent]:
         if self._beat_queue is None:
             return []

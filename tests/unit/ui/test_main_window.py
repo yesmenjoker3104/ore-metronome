@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QMenuBar
+from PySide6.QtWidgets import QGroupBox, QMenuBar
 
 from ore_metronome.application.metronome_service import MetronomeService
 from ore_metronome.application.update_service import UpdateService
@@ -129,6 +129,33 @@ def test_spin_change_syncs_slider_and_service(qtbot):
 
     assert window._slider.value() == 150
     assert service.settings.bpm == 150
+
+
+def test_closing_window_saves_current_settings(qtbot):
+    saved = []
+
+    class RecordingStore(FakeStore):
+        def save(self, settings) -> None:
+            saved.append(settings)
+
+    service = MetronomeService(audio_output=FakeAudio(), settings_store=RecordingStore())
+    window = MainWindow(MetronomeController(service))
+    qtbot.addWidget(window)
+    window._spin.setValue(150)
+    saved.clear()
+
+    window.close()
+
+    assert saved[-1].bpm == 150
+
+
+def test_beat_indicator_frame_has_no_title(qtbot):
+    window, _ = make_window(qtbot)
+
+    titles = [box.title() for box in window.findChildren(QGroupBox)]
+
+    assert "拍" not in titles
+    assert window._indicator.parentWidget().title() == ""
 
 
 def test_slider_change_syncs_spin_and_service(qtbot):

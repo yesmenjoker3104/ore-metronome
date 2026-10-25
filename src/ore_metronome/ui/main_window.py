@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
@@ -266,7 +266,7 @@ class MainWindow(QWidget):
         subdivision_row.addStretch()
         layout = QVBoxLayout(self)
         layout.setMenuBar(self._build_menu_bar())
-        layout.addWidget(_framed("拍", self._indicator))
+        layout.addWidget(_framed("", self._indicator))
         layout.addWidget(_framed("テンポ", row))
         slider_row = QHBoxLayout()
         slider_row.addWidget(_framed("テンポ調整", self._slider), 1)
@@ -430,6 +430,10 @@ class MainWindow(QWidget):
         self._meter_label.setText(
             f"{self._controller.denominator}分の{self._controller.numerator}拍子"
         )
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self._controller.save_settings()
+        super().closeEvent(event)
 
     def _on_toggle(self) -> None:
         self._controller.toggle()
