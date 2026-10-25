@@ -5,26 +5,27 @@ from pathlib import Path
 from typing import Any
 
 from ore_metronome.domain.meter import Meter
-from ore_metronome.domain.models import BeatLevel, MetronomeSettings, PositionLevel
+from ore_metronome.domain.models import BeatLevel, MetronomeSettings
 
 CURRENT_SCHEMA_VERSION = 1
 
 
-def _decode_position_levels(raw: Any) -> tuple[PositionLevel, ...]:
+def _decode_position_levels(raw: Any) -> tuple[BeatLevel, ...]:
     if not isinstance(raw, list):
         raise TypeError("subdivision mask must be a list")
 
-    levels: list[PositionLevel] = []
+    levels: list[BeatLevel] = []
 
     for position_index, item in enumerate(raw):
         if isinstance(item, bool):
-            # 旧形式（ON/OFF のみ）。位置 0 は拍に従い、それ以外は ON を通常、OFF を無音とする。
+            # 旧形式（ON/OFF のみ）。位置 1 は ON を通常、OFF を無音とする。
             if position_index == 0:
-                levels.append(None)
+                levels.append(BeatLevel.ACCENT)
             else:
                 levels.append(BeatLevel.NORMAL if item else BeatLevel.SILENT)
         elif item is None:
-            levels.append(None)
+            # 旧形式の「拍に従う」。位置 1 は既定のアクセントにする。
+            levels.append(BeatLevel.ACCENT if position_index == 0 else BeatLevel.NORMAL)
         else:
             levels.append(BeatLevel(item))
 
@@ -114,7 +115,7 @@ class SettingsRepository:
             },
             "subdivision": settings.subdivision,
             "subdivision_masks": {
-                str(count): [level.value if level is not None else None for level in mask]
+                str(count): [level.value for level in mask]
                 for count, mask in settings.subdivision_masks.items()
             },
             "accent_enabled": settings.accent_enabled,

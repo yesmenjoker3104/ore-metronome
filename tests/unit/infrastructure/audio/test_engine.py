@@ -49,7 +49,8 @@ def make_sounds() -> SoundKit:
     return SoundKit(
         accent=np.array([0.25, 0.125], dtype=np.float32),
         normal=np.array([0.5, 0.25], dtype=np.float32),
-        subdivision=np.array([0.75, 0.375], dtype=np.float32),
+        subdivision_accent=np.array([0.75, 0.375], dtype=np.float32),
+        subdivision_normal=np.array([0.0625, 0.03125], dtype=np.float32),
     )
 
 

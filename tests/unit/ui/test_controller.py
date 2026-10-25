@@ -122,11 +122,17 @@ def test_set_subdivision_mask_updates_service(controller_and_service):
 
     controller.set_subdivision_mask(
         5,
-        (None, BeatLevel.SILENT, BeatLevel.ACCENT, BeatLevel.NORMAL, BeatLevel.SILENT),
+        (
+            BeatLevel.ACCENT,
+            BeatLevel.SILENT,
+            BeatLevel.ACCENT,
+            BeatLevel.NORMAL,
+            BeatLevel.SILENT,
+        ),
     )
 
     assert controller.subdivision_mask(5) == (
-        None,
+        BeatLevel.ACCENT,
         BeatLevel.SILENT,
         BeatLevel.ACCENT,
         BeatLevel.NORMAL,
@@ -140,5 +146,9 @@ def test_cycle_subdivision_position_updates_current_subdivision(controller_and_s
 
     controller.cycle_subdivision_position(2)
 
-    assert controller.subdivision_mask(3) == (None, BeatLevel.NORMAL, BeatLevel.SILENT)
+    assert controller.subdivision_mask(3) == (
+        BeatLevel.ACCENT,
+        BeatLevel.NORMAL,
+        BeatLevel.SILENT,
+    )
     assert controller.subdivision_position_level(2) is BeatLevel.SILENT

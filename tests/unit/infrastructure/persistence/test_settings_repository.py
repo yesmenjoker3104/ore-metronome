@@ -18,7 +18,13 @@ def make_settings() -> MetronomeSettings:
         meter=Meter(7, 8),
         subdivision=5,
         subdivision_masks={
-            5: (None, BeatLevel.SILENT, BeatLevel.ACCENT, BeatLevel.NORMAL, BeatLevel.SILENT),
+            5: (
+                BeatLevel.ACCENT,
+                BeatLevel.SILENT,
+                BeatLevel.ACCENT,
+                BeatLevel.NORMAL,
+                BeatLevel.SILENT,
+            ),
         },
         accent_enabled=False,
         volume=65,
@@ -138,7 +144,7 @@ def test_beat_levels_are_saved_as_names(tmp_path: Path):
     assert data["beat_levels"] == {"0": "silent", "2": "accent"}
 
 
-def test_position_levels_are_saved_as_names_or_null(tmp_path: Path):
+def test_position_levels_are_saved_as_names(tmp_path: Path):
     path = tmp_path / "settings.json"
     repository = SettingsRepository(path)
 
@@ -147,7 +153,7 @@ def test_position_levels_are_saved_as_names_or_null(tmp_path: Path):
     data = json.loads(path.read_text(encoding="utf-8"))
 
     assert data["subdivision_masks"] == {
-        "5": [None, "silent", "accent", "normal", "silent"],
+        "5": ["accent", "silent", "accent", "normal", "silent"],
     }
 
 
@@ -174,7 +180,33 @@ def test_load_converts_boolean_masks_saved_by_earlier_versions(tmp_path: Path):
     settings = SettingsRepository(path).load()
 
     assert settings is not None
-    assert settings.mask_for(3) == (None, BeatLevel.NORMAL, BeatLevel.SILENT)
+    assert settings.mask_for(3) == (BeatLevel.ACCENT, BeatLevel.NORMAL, BeatLevel.SILENT)
+
+
+def test_load_converts_null_positions_saved_by_earlier_versions(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": CURRENT_SCHEMA_VERSION,
+                "bpm": 120,
+                "meter": {
+                    "numerator": 4,
+                    "denominator": 4,
+                },
+                "subdivision": 3,
+                "subdivision_masks": {"3": [None, None, "silent"]},
+                "accent_enabled": True,
+                "volume": 100,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = SettingsRepository(path).load()
+
+    assert settings is not None
+    assert settings.mask_for(3) == (BeatLevel.ACCENT, BeatLevel.NORMAL, BeatLevel.SILENT)
 
 
 def test_load_reads_settings_saved_before_beat_levels_existed(tmp_path: Path):

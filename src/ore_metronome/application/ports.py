@@ -5,6 +5,7 @@ from typing import Protocol, runtime_checkable
 
 from ore_metronome.domain.models import MetronomeSettings
 from ore_metronome.domain.update import ReleaseInfo, UpdatePreferences
+from ore_metronome.domain.window import WindowPosition
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,17 @@ class UpdateGateway(Protocol):
 
     def start_update(self, staged_application: Path) -> None:
         """Starts a separate process that replaces the running application."""
+        ...
+
+
+@runtime_checkable
+class WindowStateStore(Protocol):
+    def load(self) -> WindowPosition | None:
+        """Loads the saved window position, or returns None if there is none."""
+        ...
+
+    def save(self, position: WindowPosition) -> None:
+        """Saves the window position."""
         ...
 
 

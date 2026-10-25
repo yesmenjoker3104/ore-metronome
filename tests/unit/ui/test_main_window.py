@@ -1,10 +1,11 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QGroupBox, QMenuBar
 
 from ore_metronome.application.metronome_service import MetronomeService
 from ore_metronome.application.update_service import UpdateService
 from ore_metronome.domain.models import BeatLevel
 from ore_metronome.domain.update import ReleaseInfo, UpdatePreferences
+from ore_metronome.domain.window import WindowPosition
 from ore_metronome.ui import main_window
 from ore_metronome.ui.controller import MAX_BPM, MetronomeController
 from ore_metronome.ui.main_window import MainWindow
@@ -33,6 +34,18 @@ class FakeStore:
 
     def save(self, settings) -> None:
         pass
+
+
+class FakeWindowStore:
+    def __init__(self, position: WindowPosition | None = None) -> None:
+        self._position = position
+        self.saved: list[WindowPosition] = []
+
+    def load(self) -> WindowPosition | None:
+        return self._position
+
+    def save(self, position: WindowPosition) -> None:
+        self.saved.append(position)
 
 
 def make_window(qtbot, update_service=None):
@@ -367,13 +380,13 @@ def test_mask_buttons_match_subdivision_count(qtbot):
 
     assert not window._mask_container.isHidden()
     shown = {index for index, button in window._mask_buttons.items() if not button.isHidden()}
-    assert shown == {1, 2, 3, 4}
+    assert shown == {0, 1, 2, 3, 4}
 
 
-def test_first_position_has_no_mask_button(qtbot):
+def test_first_position_has_a_mask_button(qtbot):
     window, _ = make_window(qtbot)
 
-    assert 0 not in window._mask_buttons
+    assert 0 in window._mask_buttons
 
 
 def test_mask_container_is_hidden_without_subdivision(qtbot):
@@ -390,7 +403,11 @@ def test_mask_button_click_cycles_level(qtbot):
 
     window._mask_buttons[1].click()
 
-    assert service.settings.mask_for(3) == (None, BeatLevel.SILENT, BeatLevel.NORMAL)
+    assert service.settings.mask_for(3) == (
+        BeatLevel.ACCENT,
+        BeatLevel.SILENT,
+        BeatLevel.NORMAL,
+    )
     assert window._mask_buttons[1].property("level") == "silent"
 
 
@@ -417,6 +434,66 @@ def test_mask_button_shows_level_for_accent(qtbot):
 
     assert window._mask_buttons[1].property("level") == "accent"
     assert window._mask_buttons[1].toolTip() == "アクセント"
+
+
+def test_first_position_button_defaults_to_accent(qtbot):
+    window, _ = make_window(qtbot)
+    window._subdivision_combo.setCurrentIndex(window._subdivision_combo.findData(3))
+
+    assert window._mask_buttons[0].property("level") == "accent"
+    assert window._mask_buttons[0].toolTip() == "アクセント"
+
+
+def test_first_position_click_cycles_only_its_own_level(qtbot):
+    window, service = make_window(qtbot)
+    window._subdivision_combo.setCurrentIndex(window._subdivision_combo.findData(3))
+    beat_levels_before = dict(service.settings.beat_levels)
+
+    window._mask_buttons[0].click()
+
+    assert service.settings.mask_for(3)[0] is BeatLevel.NORMAL
+    assert dict(service.settings.beat_levels) == beat_levels_before
+    assert window._mask_buttons[0].property("level") == "normal"
+
+
+def test_beat_click_does_not_change_first_position_button(qtbot):
+    window, _ = make_window(qtbot)
+    window._subdivision_combo.setCurrentIndex(window._subdivision_combo.findData(3))
+
+    window._indicator.beat_clicked.emit(0)
+
+    assert window._mask_buttons[0].property("level") == "accent"
+
+
+def test_window_position_is_saved_on_close(qtbot):
+    store = FakeWindowStore()
+    service = MetronomeService(audio_output=FakeAudio(), settings_store=FakeStore())
+    window = MainWindow(MetronomeController(service), window_store=store)
+    qtbot.addWidget(window)
+    window.move(60, 70)
+
+    window.close()
+
+    assert store.saved == [WindowPosition(60, 70)]
+
+
+def test_saved_window_position_is_restored_when_on_screen(qtbot):
+    store = FakeWindowStore(WindowPosition(60, 70))
+    service = MetronomeService(audio_output=FakeAudio(), settings_store=FakeStore())
+    window = MainWindow(MetronomeController(service), window_store=store)
+    qtbot.addWidget(window)
+
+    assert window.pos() == QPoint(60, 70)
+
+
+def test_saved_window_position_off_screen_falls_back_to_default(qtbot):
+    default_window, _ = make_window(qtbot)
+    store = FakeWindowStore(WindowPosition(100000, 100000))
+    service = MetronomeService(audio_output=FakeAudio(), settings_store=FakeStore())
+    window = MainWindow(MetronomeController(service), window_store=store)
+    qtbot.addWidget(window)
+
+    assert window.pos() == default_window.pos()
 
 
 def test_subdivision_is_enabled_for_any_denominator(qtbot):

@@ -2,7 +2,7 @@ from dataclasses import replace
 
 from ore_metronome.application.ports import AudioOutput, SettingsStore
 from ore_metronome.domain.meter import Meter
-from ore_metronome.domain.models import BeatLevel, MetronomeSettings, PositionLevel
+from ore_metronome.domain.models import BeatLevel, MetronomeSettings
 
 
 def default_settings() -> MetronomeSettings:
@@ -75,7 +75,7 @@ class MetronomeService:
     def set_subdivision(self, subdivision: int) -> None:
         self._apply(replace(self._settings, subdivision=subdivision))
 
-    def set_subdivision_mask(self, subdivision: int, mask: tuple[PositionLevel, ...]) -> None:
+    def set_subdivision_mask(self, subdivision: int, mask: tuple[BeatLevel, ...]) -> None:
         masks = dict(self._settings.subdivision_masks)
         masks[subdivision] = mask
         self._apply(replace(self._settings, subdivision_masks=masks))

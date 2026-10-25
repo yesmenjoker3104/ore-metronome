@@ -233,11 +233,18 @@ def test_set_subdivision_mask_updates_settings_and_configures_audio():
     service = MetronomeService(audio, store)
     service.set_subdivision(3)
 
-    service.set_subdivision_mask(3, (None, BeatLevel.SILENT, BeatLevel.ACCENT))
+    service.set_subdivision_mask(
+        3, (BeatLevel.ACCENT, BeatLevel.SILENT, BeatLevel.ACCENT)
+    )
 
-    assert service.settings.mask_for(3) == (None, BeatLevel.SILENT, BeatLevel.ACCENT)
+    assert service.settings.mask_for(3) == (
+        BeatLevel.ACCENT,
+        BeatLevel.SILENT,
+        BeatLevel.ACCENT,
+    )
     assert audio.configured_settings == service.settings
     assert store.saved_settings is None
+
 
 def test_save_settings_saves_current_settings():
     audio = FakeAudioOutput()

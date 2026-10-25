@@ -3,9 +3,10 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QRect, Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QGroupBox,
     QHBoxLayout,
@@ -20,12 +21,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ore_metronome.application.ports import WindowStateStore
 from ore_metronome.application.update_service import UpdateService
 from ore_metronome.domain.meter import ALLOWED_DENOMINATORS, MAX_NUMERATOR, MIN_NUMERATOR
 from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME, BeatLevel
 from ore_metronome.domain.subdivision import ALLOWED_COUNTS
 from ore_metronome.domain.tap_tempo import RESET_SECONDS
 from ore_metronome.domain.update import ReleaseInfo
+from ore_metronome.domain.window import WindowPosition
 from ore_metronome.ui.background_task import BackgroundTask
 from ore_metronome.ui.controller import MAX_BPM, MIN_BPM, MetronomeController
 from ore_metronome.ui.dialogs.update_dialog import UpdateChoice, UpdateDialog
@@ -159,14 +162,17 @@ class MainWindow(QWidget):
         self,
         controller: MetronomeController,
         update_service: UpdateService | None = None,
+        window_store: WindowStateStore | None = None,
     ) -> None:
         super().__init__()
         self._controller = controller
         self._update_service = update_service
+        self._window_store = window_store
         self._active_task: BackgroundTask | None = None
         self._manual_check = False
         self.setWindowTitle(f"Ore Metronome v{__version__}")
         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
+        self._restore_window_position()
         font = self.font()
         font.setPointSizeF(font.pointSizeF() * 2)
         self.setFont(font)
@@ -234,9 +240,9 @@ class MainWindow(QWidget):
         mask_layout = QHBoxLayout(self._mask_container)
         mask_layout.setContentsMargins(0, 0, 0, 0)
         mask_layout.setSpacing(2)
-        # 1 つ目の位置は拍インジケータの強弱に従うため、ボタンは 2 つ目以降のみ置く。
+        # 位置 1 は全拍インジケータに連動し、クリックで全拍の状態を一括で切り替える。
         self._mask_buttons: dict[int, QPushButton] = {}
-        for position_index in range(1, max(ALLOWED_COUNTS)):
+        for position_index in range(max(ALLOWED_COUNTS)):
             button = QPushButton(str(position_index + 1))
             button.setObjectName("mask")
             button.setFixedSize(MASK_BUTTON_SIZE, MASK_BUTTON_SIZE)
@@ -453,7 +459,21 @@ class MainWindow(QWidget):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._controller.save_settings()
+        if self._window_store is not None:
+            position = self.pos()
+            self._window_store.save(WindowPosition(position.x(), position.y()))
         super().closeEvent(event)
+
+    def _restore_window_position(self) -> None:
+        if self._window_store is None:
+            return
+        position = self._window_store.load()
+        if position is None:
+            return
+        # 画面外や画面をまたぐ位置は、外したモニターに取り残されないよう既定位置のままにする。
+        rect = QRect(position.x, position.y, WINDOW_WIDTH, WINDOW_HEIGHT)
+        if any(screen.availableGeometry().contains(rect) for screen in QApplication.screens()):
+            self.move(position.x, position.y)
 
     def _on_toggle(self) -> None:
         self._controller.toggle()

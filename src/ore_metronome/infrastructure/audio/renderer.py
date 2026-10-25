@@ -26,7 +26,14 @@ def render_bar(
     subdivision = settings.subdivision
 
     for beat_index in range(settings.meter.beats_per_bar):
-        if settings.effective_beat_level(beat_index) is BeatLevel.SILENT:
+        # メインの拍。
+        beat_level = settings.effective_beat_level(beat_index)
+        if beat_level is not BeatLevel.SILENT:
+            beat_sound = sounds.accent if beat_level is BeatLevel.ACCENT else sounds.normal
+            _mix_into(output, beat_sound, round(beat_index * beat_seconds * sample_rate))
+
+        # 連符。1 拍 1 つしかない場合は連符を鳴らさない。
+        if subdivision == 1:
             continue
 
         for subdivision_index in range(subdivision):
@@ -36,7 +43,11 @@ def render_bar(
 
             position = beat_index + subdivision_index / subdivision
             start_sample = round(position * beat_seconds * sample_rate)
-            sound = sounds.accent if level is BeatLevel.ACCENT else sounds.normal
+            sound = (
+                sounds.subdivision_accent
+                if level is BeatLevel.ACCENT
+                else sounds.subdivision_normal
+            )
 
             _mix_into(output, sound, start_sample)
 

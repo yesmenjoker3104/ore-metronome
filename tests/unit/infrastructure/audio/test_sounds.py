@@ -32,7 +32,8 @@ def test_generate_click_returns_mono_float_array():
     [
         (ClickKind.ACCENT, 1800, 0.9),
         (ClickKind.NORMAL, 1200, 0.7),
-        (ClickKind.SUBDIVISION, 800, 0.4),
+        (ClickKind.SUBDIVISION_ACCENT, 1000, 0.6),
+        (ClickKind.SUBDIVISION_NORMAL, 800, 0.4),
     ],
 )
 def test_default_sound_has_expected_peak(
@@ -55,7 +56,22 @@ def test_default_sounds_are_available_by_kind():
 
     assert sounds.for_kind(ClickKind.ACCENT) is sounds.accent
     assert sounds.for_kind(ClickKind.NORMAL) is sounds.normal
-    assert sounds.for_kind(ClickKind.SUBDIVISION) is sounds.subdivision
+    assert sounds.for_kind(ClickKind.SUBDIVISION_ACCENT) is sounds.subdivision_accent
+    assert sounds.for_kind(ClickKind.SUBDIVISION_NORMAL) is sounds.subdivision_normal
+
+
+def test_subdivision_sounds_use_a_different_timbre_than_beat_sounds():
+    # 連符は三角波、拍は正弦波。同じ周波数でも波形が一致しないことを確認する。
+    sine = generate_click(frequency=800, amplitude=0.4, sample_rate=44100)
+    triangle = generate_click(
+        frequency=800,
+        amplitude=0.4,
+        sample_rate=44100,
+        waveform="triangle",
+    )
+
+    assert not np.allclose(sine, triangle)
+    assert 0.35 <= np.max(np.abs(triangle)) <= 0.4 + 1e-6
 
 
 @pytest.mark.parametrize(

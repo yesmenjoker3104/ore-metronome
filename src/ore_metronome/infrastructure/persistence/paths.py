@@ -24,3 +24,7 @@ def setlists_path() -> Path:
 
 def update_preferences_path() -> Path:
     return app_data_dir() / "update.json"
+
+
+def window_state_path() -> Path:
+    return app_data_dir() / "window.json"

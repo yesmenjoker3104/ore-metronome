@@ -18,14 +18,14 @@ def test_default_settings_are_created():
     assert settings.volume == 100
 
 
-def test_mask_for_subdivision_defaults_to_normal_after_the_first_position():
+def test_mask_for_subdivision_defaults_to_accent_then_normal():
     settings = MetronomeSettings(
         bpm=120,
         meter=Meter(4, 4),
         subdivision=3,
     )
 
-    assert settings.mask_for(3) == (None, BeatLevel.NORMAL, BeatLevel.NORMAL)
+    assert settings.mask_for(3) == (BeatLevel.ACCENT, BeatLevel.NORMAL, BeatLevel.NORMAL)
 
 
 def test_configured_mask_is_returned():
@@ -34,12 +34,18 @@ def test_configured_mask_is_returned():
         meter=Meter(4, 4),
         subdivision=5,
         subdivision_masks={
-            5: (None, BeatLevel.SILENT, BeatLevel.ACCENT, BeatLevel.NORMAL, BeatLevel.SILENT),
+            5: (
+                BeatLevel.ACCENT,
+                BeatLevel.SILENT,
+                BeatLevel.ACCENT,
+                BeatLevel.NORMAL,
+                BeatLevel.SILENT,
+            ),
         },
     )
 
     assert settings.mask_for(5) == (
-        None,
+        BeatLevel.ACCENT,
         BeatLevel.SILENT,
         BeatLevel.ACCENT,
         BeatLevel.NORMAL,
@@ -52,10 +58,10 @@ def test_position_levels_are_stored_as_beat_level():
         bpm=120,
         meter=Meter(4, 4),
         subdivision=2,
-        subdivision_masks={2: (None, "silent")},
+        subdivision_masks={2: (BeatLevel.NORMAL, "silent")},
     )
 
-    assert settings.mask_for(2) == (None, BeatLevel.SILENT)
+    assert settings.mask_for(2) == (BeatLevel.NORMAL, BeatLevel.SILENT)
 
 
 @pytest.mark.parametrize("bpm", [19, 301])
@@ -109,26 +115,27 @@ def test_subdivision_is_kept_for_any_denominator():
     assert settings.subdivision == 6
 
 
-def test_position_one_must_follow_the_beat_level():
+def test_position_one_can_be_any_level_independent_of_the_beat():
+    settings = MetronomeSettings(
+        bpm=120,
+        meter=Meter(4, 4),
+        subdivision=3,
+        subdivision_masks={
+            3: (BeatLevel.SILENT, BeatLevel.NORMAL, BeatLevel.ACCENT),
+        },
+    )
+
+    assert settings.mask_for(3) == (BeatLevel.SILENT, BeatLevel.NORMAL, BeatLevel.ACCENT)
+
+
+def test_positions_must_be_beat_levels():
     with pytest.raises(ValueError):
         MetronomeSettings(
             bpm=120,
             meter=Meter(4, 4),
             subdivision=3,
             subdivision_masks={
-                3: (BeatLevel.NORMAL, BeatLevel.NORMAL, BeatLevel.NORMAL),
-            },
-        )
-
-
-def test_positions_after_the_first_must_have_a_level():
-    with pytest.raises(ValueError):
-        MetronomeSettings(
-            bpm=120,
-            meter=Meter(4, 4),
-            subdivision=3,
-            subdivision_masks={
-                3: (None, None, BeatLevel.NORMAL),
+                3: (BeatLevel.NORMAL, None, BeatLevel.NORMAL),
             },
         )
 
@@ -139,11 +146,11 @@ def test_position_levels_can_all_be_silent():
         meter=Meter(4, 4),
         subdivision=3,
         subdivision_masks={
-            3: (None, BeatLevel.SILENT, BeatLevel.SILENT),
+            3: (BeatLevel.SILENT, BeatLevel.SILENT, BeatLevel.SILENT),
         },
     )
 
-    assert settings.mask_for(3) == (None, BeatLevel.SILENT, BeatLevel.SILENT)
+    assert settings.mask_for(3) == (BeatLevel.SILENT, BeatLevel.SILENT, BeatLevel.SILENT)
 
 
 def test_invalid_mask_length_is_rejected():
@@ -153,12 +160,12 @@ def test_invalid_mask_length_is_rejected():
             meter=Meter(4, 4),
             subdivision=3,
             subdivision_masks={
-                3: (None, BeatLevel.NORMAL),
+                3: (BeatLevel.ACCENT, BeatLevel.NORMAL),
             },
         )
 
 
-def test_effective_position_level_follows_beat_for_position_one():
+def test_position_one_is_silent_only_when_the_beat_is_silent():
     settings = MetronomeSettings(
         bpm=120,
         meter=Meter(4, 4),
@@ -168,6 +175,20 @@ def test_effective_position_level_follows_beat_for_position_one():
 
     assert settings.effective_position_level(0, 0) is BeatLevel.ACCENT
     assert settings.effective_position_level(1, 0) is BeatLevel.SILENT
+    # 位置 2 は拍が無音でも鳴る。
+    assert settings.effective_position_level(1, 1) is BeatLevel.NORMAL
+
+
+def test_position_one_ignores_the_beat_level_unless_the_beat_is_silent():
+    settings = MetronomeSettings(
+        bpm=120,
+        meter=Meter(4, 4),
+        subdivision=2,
+        subdivision_masks={2: (BeatLevel.SILENT, BeatLevel.NORMAL)},
+    )
+
+    assert settings.effective_position_level(0, 0) is BeatLevel.SILENT
+    assert settings.effective_position_level(0, 1) is BeatLevel.NORMAL
 
 
 def test_effective_position_level_downgrades_accent_when_disabled():
@@ -175,7 +196,7 @@ def test_effective_position_level_downgrades_accent_when_disabled():
         bpm=120,
         meter=Meter(4, 4),
         subdivision=2,
-        subdivision_masks={2: (None, BeatLevel.ACCENT)},
+        subdivision_masks={2: (BeatLevel.ACCENT, BeatLevel.ACCENT)},
         accent_enabled=False,
     )
 
@@ -189,10 +210,11 @@ def test_cycled_position_level_goes_accent_normal_silent():
         meter=Meter(4, 4),
         subdivision=3,
         subdivision_masks={
-            3: (None, BeatLevel.ACCENT, BeatLevel.NORMAL),
+            3: (BeatLevel.ACCENT, BeatLevel.ACCENT, BeatLevel.NORMAL),
         },
     )
 
+    assert settings.cycled_position_level(0) is BeatLevel.NORMAL
     assert settings.cycled_position_level(1) is BeatLevel.NORMAL
     assert settings.cycled_position_level(2) is BeatLevel.SILENT
 
@@ -202,17 +224,18 @@ def test_cycled_position_level_skips_accent_when_disabled():
         bpm=120,
         meter=Meter(4, 4),
         subdivision=2,
-        subdivision_masks={2: (None, BeatLevel.NORMAL)},
+        subdivision_masks={2: (BeatLevel.ACCENT, BeatLevel.NORMAL)},
         accent_enabled=False,
     )
 
+    assert settings.cycled_position_level(0) is BeatLevel.SILENT
     assert settings.cycled_position_level(1) is BeatLevel.SILENT
 
     silent = MetronomeSettings(
         bpm=120,
         meter=Meter(4, 4),
         subdivision=2,
-        subdivision_masks={2: (None, BeatLevel.SILENT)},
+        subdivision_masks={2: (BeatLevel.ACCENT, BeatLevel.SILENT)},
         accent_enabled=False,
     )
 

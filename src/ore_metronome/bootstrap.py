@@ -13,12 +13,17 @@ from ore_metronome.infrastructure.audio.engine import (
     StreamFactory,
 )
 from ore_metronome.infrastructure.audio.sounds import generate_default_sounds
-from ore_metronome.infrastructure.persistence.paths import settings_path, update_preferences_path
+from ore_metronome.infrastructure.persistence.paths import (
+    settings_path,
+    update_preferences_path,
+    window_state_path,
+)
 from ore_metronome.infrastructure.persistence.settings_repository import (
     SettingsDataError,
     SettingsRepository,
 )
 from ore_metronome.infrastructure.persistence.update_store import JsonUpdateStore
+from ore_metronome.infrastructure.persistence.window_store import JsonWindowStore
 from ore_metronome.infrastructure.update.gateway import GitHubUpdateGateway
 from ore_metronome.version import __version__
 
@@ -63,3 +68,7 @@ def build_service(
 def build_update_service(*, preferences_file: Path | None = None) -> UpdateService:
     store = JsonUpdateStore(preferences_file or update_preferences_path())
     return UpdateService(GitHubUpdateGateway(), store, __version__)
+
+
+def build_window_store(*, state_file: Path | None = None) -> JsonWindowStore:
+    return JsonWindowStore(state_file or window_state_path())

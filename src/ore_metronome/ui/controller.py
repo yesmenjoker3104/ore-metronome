@@ -1,7 +1,7 @@
 from ore_metronome.application.metronome_service import MetronomeService
 from ore_metronome.application.ports import BeatEvent
 from ore_metronome.domain.meter import MAX_NUMERATOR, MIN_NUMERATOR, Meter
-from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME, BeatLevel, PositionLevel
+from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME, BeatLevel
 from ore_metronome.domain.tap_tempo import TapTempo
 from ore_metronome.infrastructure.audio.beat_queue import BeatQueue
 
@@ -75,14 +75,14 @@ class MetronomeController:
     def set_subdivision(self, subdivision: int) -> None:
         self._service.set_subdivision(subdivision)
 
-    def subdivision_mask(self, subdivision: int) -> tuple[PositionLevel, ...]:
+    def subdivision_mask(self, subdivision: int) -> tuple[BeatLevel, ...]:
         return self._service.settings.mask_for(subdivision)
 
-    def set_subdivision_mask(self, subdivision: int, mask: tuple[PositionLevel, ...]) -> None:
+    def set_subdivision_mask(self, subdivision: int, mask: tuple[BeatLevel, ...]) -> None:
         self._service.set_subdivision_mask(subdivision, mask)
 
     def subdivision_position_level(self, position_index: int) -> BeatLevel:
-        return self._service.settings.effective_position_level(0, position_index)
+        return self._service.settings.effective_mask_level(position_index)
 
     def cycle_subdivision_position(self, position_index: int) -> None:
         settings = self._service.settings
