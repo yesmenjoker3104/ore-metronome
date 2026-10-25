@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 import sounddevice as sd
 
+from ore_metronome.application.ports import BeatEvent, BeatEventSink
 from ore_metronome.domain.models import MetronomeSettings
 from ore_metronome.domain.tempo import click_interval_seconds
 from ore_metronome.infrastructure.audio.renderer import AudioBuffer, render_bar
@@ -30,10 +31,12 @@ class SoundDeviceEngine:
             *,
             sample_rate: int = DEFAULT_SAMPLE_RATE,
             stream_factory: StreamFactory = sd.OutputStream,
+            beat_sink: BeatEventSink | None = None,
     ) -> None:
         self._sounds = sounds
         self._sample_rate = sample_rate
         self._stream_factory = stream_factory
+        self._beat_sink = beat_sink
         self._lock = threading.Lock()
         self._plan: _BarPlan | None = None
         self._pending: _BarPlan | None = None
@@ -53,6 +56,7 @@ class SoundDeviceEngine:
         if self.is_running:
             return
         self.configure(settings)
+        self._publish_beat()
         stream = self._stream_factory(
             samplerate=self._sample_rate,
             channels=1,
@@ -115,6 +119,18 @@ class SoundDeviceEngine:
             self._plan, self._pending = self._pending, None
         self._beat_index = next_index % self._plan.beats
         self._position = self._beat_start(self._plan, self._beat_index)
+        self._publish_beat()
+
+    def _publish_beat(self) -> None:
+        if self._beat_sink is None:
+            return
+        self._beat_sink.publish(
+            BeatEvent(
+                beat_index=self._beat_index,
+                is_downbeat=self._beat_index == 0,
+                is_subdivision=False,
+            )
+        )
 
     def _beat_start(self, plan: _BarPlan, beat_index: int) -> int:
         return round(beat_index * plan.beat_seconds * self._sample_rate)

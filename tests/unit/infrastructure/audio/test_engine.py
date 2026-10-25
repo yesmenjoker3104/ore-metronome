@@ -36,6 +36,14 @@ class FakeStreamFactory:
         return stream
 
 
+class FakeBeatSink:
+    def __init__(self):
+        self.events = []
+
+    def publish(self, event):
+        self.events.append(event)
+
+
 def make_sounds() -> SoundKit:
     return SoundKit(
         accent=np.array([0.25, 0.125], dtype=np.float32),
@@ -238,6 +246,24 @@ def test_configure_meter_change_waits_for_current_beat_to_finish():
     new_bar = render_bar(three_four, make_sounds(), sample_rate=SAMPLE_RATE)
     expected = np.concatenate([old_bar[60:100], new_bar[0:60]])
     np.testing.assert_array_equal(result, expected)
+
+
+def test_beat_sink_receives_beats_in_order():
+    factory = FakeStreamFactory()
+    sink = FakeBeatSink()
+    engine = SoundDeviceEngine(
+        make_sounds(),
+        sample_rate=SAMPLE_RATE,
+        stream_factory=factory,
+        beat_sink=sink,
+    )
+    engine.start(make_settings())
+
+    # 2/4 at 120 BPM, 100 サンプルで 1 小節。2 拍目は 50 サンプル目から
+    run_callback(factory.streams[0], 60)
+
+    assert [e.beat_index for e in sink.events] == [0, 1]
+    assert [e.is_downbeat for e in sink.events] == [True, False]
 
 
 

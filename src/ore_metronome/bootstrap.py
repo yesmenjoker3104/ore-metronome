@@ -4,6 +4,7 @@ from pathlib import Path
 import sounddevice as sd
 
 from ore_metronome.application.metronome_service import MetronomeService
+from ore_metronome.application.ports import BeatEventSink
 from ore_metronome.domain.models import MetronomeSettings
 from ore_metronome.infrastructure.audio.engine import (
     DEFAULT_SAMPLE_RATE,
@@ -38,12 +39,14 @@ def build_service(
         *,
         settings_file: Path | None = None,
         stream_factory: StreamFactory = sd.OutputStream,
+        beat_sink: BeatEventSink | None = None,
 ) -> MetronomeService:
     sounds = generate_default_sounds(sample_rate=DEFAULT_SAMPLE_RATE)
     engine = SoundDeviceEngine(
         sounds=sounds,
         sample_rate=DEFAULT_SAMPLE_RATE,
         stream_factory=stream_factory,
+        beat_sink=beat_sink,
     )
     path = settings_file or settings_path()
     store = _FallbackSettingsStore(SettingsRepository(path), path)
