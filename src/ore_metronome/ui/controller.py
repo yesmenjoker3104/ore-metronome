@@ -1,5 +1,6 @@
 from ore_metronome.application.metronome_service import MetronomeService
 from ore_metronome.application.ports import BeatEvent
+from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME
 from ore_metronome.domain.tap_tempo import TapTempo
 from ore_metronome.infrastructure.audio.beat_queue import BeatQueue
 
@@ -43,6 +44,13 @@ class MetronomeController:
     @property
     def accent_enabled(self) -> bool:
         return self._service.settings.accent_enabled
+
+    @property
+    def volume(self) -> int:
+        return self._service.settings.volume
+
+    def set_volume(self, volume: int) -> None:
+        self._service.set_volume(max(MIN_VOLUME, min(MAX_VOLUME, volume)))
 
     def drain_beats(self) -> list[BeatEvent]:
         if self._beat_queue is None:

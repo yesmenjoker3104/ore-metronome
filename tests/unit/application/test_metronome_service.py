@@ -224,3 +224,11 @@ def test_save_settings_saves_current_settings():
 
     assert store.saved_settings == service.settings
     assert store.saved_settings.bpm == 150
+
+
+def test_set_volume_updates_settings():
+    service = MetronomeService(FakeAudioOutput(), FakeSettingsStore())
+
+    service.set_volume(40)
+
+    assert service.settings.volume == 40

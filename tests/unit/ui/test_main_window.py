@@ -113,3 +113,11 @@ def test_up_and_down_change_bpm_by_one(qtbot):
 
     qtbot.keyClick(window, Qt.Key.Key_Down)
     assert service.settings.bpm == 120
+
+
+def test_volume_slider_syncs_service(qtbot):
+    window, service = make_window(qtbot)
+
+    window._volume_slider.setValue(30)
+
+    assert service.settings.volume == 30

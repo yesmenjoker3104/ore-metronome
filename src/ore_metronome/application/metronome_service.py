@@ -59,6 +59,9 @@ class MetronomeService:
     def set_meter(self, meter: Meter) -> None:
         self._apply(replace(self._settings, meter=meter))
 
+    def set_volume(self, volume: int) -> None:
+        self._apply(replace(self._settings, volume=volume))
+
     def save_settings(self) -> None:
         self._settings_store.save(self._settings)
 

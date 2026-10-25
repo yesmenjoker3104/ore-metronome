@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME
 from ore_metronome.ui.controller import MAX_BPM, MIN_BPM, MetronomeController
 from ore_metronome.ui.widgets.beat_indicator import BeatIndicator
 
@@ -78,6 +79,11 @@ class MainWindow(QWidget):
         self._slider.setRange(MIN_BPM, MAX_BPM)
         self._slider.setValue(controller.bpm)
 
+        self._volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self._volume_slider.setRange(MIN_VOLUME, MAX_VOLUME)
+        self._volume_slider.setValue(controller.volume)
+        self._volume_slider.valueChanged.connect(self._controller.set_volume)
+
         self._toggle = QPushButton()
         self._toggle.setObjectName("toggle")
         self._toggle.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -112,6 +118,7 @@ class MainWindow(QWidget):
         layout.addWidget(self._slider)
         layout.addWidget(self._toggle)
         layout.addWidget(self._tap)
+        layout.addWidget(self._volume_slider)
         layout.addStretch()
         self.setStyleSheet(STYLE_SHEET)
 
