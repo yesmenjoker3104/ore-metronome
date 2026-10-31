@@ -1,11 +1,10 @@
 import json
-import os
-import tempfile
 from pathlib import Path
 from typing import Any
 
 from ore_metronome.domain.meter import Meter
 from ore_metronome.domain.models import BeatLevel, MetronomeSettings
+from ore_metronome.infrastructure.persistence.json_file import write_json_atomically
 
 CURRENT_SCHEMA_VERSION = 1
 
@@ -66,44 +65,17 @@ class SettingsRepository:
             )
 
         try:
-            return self._decode_settings(data)
+            return self.decode_settings(data)
         except (KeyError, TypeError, ValueError) as exc:
             raise SettingsDataError(
                 f"Invalid settings: {self._path}"
             ) from exc
 
     def save(self, settings: MetronomeSettings) -> None:
-        data = self._encode_settings(settings)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-
-        temporary_path: Path | None = None
-
-        try:
-            with tempfile.NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
-                dir=self._path.parent,
-                prefix=f".{self._path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as temporary_file:
-                json.dump(
-                    data,
-                    temporary_file,
-                    ensure_ascii=False,
-                    indent=2,
-                )
-                temporary_file.write("\n")
-                temporary_path = Path(temporary_file.name)
-
-            os.replace(temporary_path, self._path)
-            temporary_path = None
-        finally:
-            if temporary_path is not None:
-                temporary_path.unlink(missing_ok=True)
+        write_json_atomically(self._path, self.encode_settings(settings))
 
     @staticmethod
-    def _encode_settings(
+    def encode_settings(
         settings: MetronomeSettings,
     ) -> dict[str, Any]:
         return {
@@ -127,7 +99,7 @@ class SettingsRepository:
         }
 
     @staticmethod
-    def _decode_settings(
+    def decode_settings(
         data: dict[str, Any],
     ) -> MetronomeSettings:
         meter_data = data["meter"]

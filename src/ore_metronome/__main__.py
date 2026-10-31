@@ -5,7 +5,12 @@ from pathlib import Path
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from ore_metronome.bootstrap import build_service, build_update_service, build_window_store
+from ore_metronome.bootstrap import (
+    build_service,
+    build_setlist_service,
+    build_update_service,
+    build_window_store,
+)
 from ore_metronome.infrastructure.audio.beat_queue import BeatQueue
 from ore_metronome.ui.controller import MetronomeController
 from ore_metronome.ui.main_window import MainWindow
@@ -33,6 +38,7 @@ def main() -> int:
         MetronomeController(service, beats),
         build_update_service(),
         build_window_store(),
+        build_setlist_service(service),
     )
     window.show()
     try:
@@ -42,4 +48,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

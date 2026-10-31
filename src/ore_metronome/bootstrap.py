@@ -5,8 +5,10 @@ import sounddevice as sd
 
 from ore_metronome.application.metronome_service import MetronomeService
 from ore_metronome.application.ports import BeatEventSink
+from ore_metronome.application.setlist_service import SetlistService
 from ore_metronome.application.update_service import UpdateService
 from ore_metronome.domain.models import MetronomeSettings
+from ore_metronome.domain.setlist import PlaylistLibrary
 from ore_metronome.infrastructure.audio.engine import (
     DEFAULT_SAMPLE_RATE,
     SoundDeviceEngine,
@@ -14,9 +16,14 @@ from ore_metronome.infrastructure.audio.engine import (
 )
 from ore_metronome.infrastructure.audio.sounds import generate_default_sounds
 from ore_metronome.infrastructure.persistence.paths import (
+    setlists_path,
     settings_path,
     update_preferences_path,
     window_state_path,
+)
+from ore_metronome.infrastructure.persistence.setlist_repository import (
+    SetlistDataError,
+    SetlistRepository,
 )
 from ore_metronome.infrastructure.persistence.settings_repository import (
     SettingsDataError,
@@ -68,6 +75,21 @@ def build_service(
 def build_update_service(*, preferences_file: Path | None = None) -> UpdateService:
     store = JsonUpdateStore(preferences_file or update_preferences_path())
     return UpdateService(GitHubUpdateGateway(), store, __version__)
+
+
+def build_setlist_service(
+    metronome_service: MetronomeService,
+    *,
+    setlists_file: Path | None = None,
+) -> SetlistService:
+    path = setlists_file or setlists_path()
+    repository = SetlistRepository(path)
+    try:
+        library = repository.load()
+    except SetlistDataError:
+        os.replace(path, path.with_name(path.name + ".bak"))
+        library = PlaylistLibrary()
+    return SetlistService(metronome_service, repository, library)
 
 
 def build_window_store(*, state_file: Path | None = None) -> JsonWindowStore:

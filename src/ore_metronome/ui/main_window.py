@@ -22,16 +22,18 @@ from PySide6.QtWidgets import (
 )
 
 from ore_metronome.application.ports import WindowStateStore
+from ore_metronome.application.setlist_service import SetlistService
 from ore_metronome.application.update_service import UpdateService
 from ore_metronome.domain.meter import ALLOWED_DENOMINATORS, MAX_NUMERATOR, MIN_NUMERATOR
 from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME, BeatLevel
 from ore_metronome.domain.subdivision import ALLOWED_COUNTS
 from ore_metronome.domain.tap_tempo import RESET_SECONDS
 from ore_metronome.domain.update import ReleaseInfo
-from ore_metronome.domain.window import WindowPosition
+from ore_metronome.domain.window import WindowGeometry
 from ore_metronome.ui.background_task import BackgroundTask
 from ore_metronome.ui.controller import MAX_BPM, MIN_BPM, MetronomeController
 from ore_metronome.ui.dialogs.update_dialog import UpdateChoice, UpdateDialog
+from ore_metronome.ui.playlist_panel import PlaylistPanel
 from ore_metronome.ui.widgets.beat_indicator import BeatIndicator
 from ore_metronome.version import __version__
 
@@ -39,8 +41,13 @@ TICK_INTERVAL_MS = 15
 
 WINDOW_WIDTH = 496
 WINDOW_HEIGHT = 480
+PLAYLIST_PANEL_WIDTH = 360
+PLAYLIST_FONT_POINT_SIZE = 12.0
 
 MASK_BUTTON_SIZE = 28
+
+TEMPO_BUTTON_STEP = 5
+VOLUME_BUTTON_STEP = 5
 
 MASK_LEVEL_LABELS = {
     BeatLevel.ACCENT: "アクセント",
@@ -163,16 +170,17 @@ class MainWindow(QWidget):
         controller: MetronomeController,
         update_service: UpdateService | None = None,
         window_store: WindowStateStore | None = None,
+        setlist_service: SetlistService | None = None,
     ) -> None:
         super().__init__()
         self._controller = controller
         self._update_service = update_service
         self._window_store = window_store
+        self._setlist_service = setlist_service
         self._active_task: BackgroundTask | None = None
         self._manual_check = False
         self.setWindowTitle(f"Ore Metronome v{__version__}")
         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
-        self._restore_window_position()
         font = self.font()
         font.setPointSizeF(font.pointSizeF() * 2)
         self.setFont(font)
@@ -184,6 +192,14 @@ class MainWindow(QWidget):
         self._slider = QSlider(Qt.Orientation.Horizontal)
         self._slider.setRange(MIN_BPM, MAX_BPM)
         self._slider.setValue(controller.bpm)
+
+        self._tempo_down = QPushButton("－")
+        self._tempo_up = QPushButton("＋")
+        self._volume_down = QPushButton("－")
+        self._volume_up = QPushButton("＋")
+        for button in (self._tempo_down, self._tempo_up, self._volume_down, self._volume_up):
+            button.setFont(self.font())
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self._volume_slider = QSlider(Qt.Orientation.Horizontal)
         self._volume_slider.setRange(MIN_VOLUME, MAX_VOLUME)
@@ -258,6 +274,10 @@ class MainWindow(QWidget):
 
         self._spin.valueChanged.connect(self._on_bpm_changed)
         self._slider.valueChanged.connect(self._on_bpm_changed)
+        self._tempo_down.clicked.connect(lambda: self._nudge(-TEMPO_BUTTON_STEP))
+        self._tempo_up.clicked.connect(lambda: self._nudge(TEMPO_BUTTON_STEP))
+        self._volume_down.clicked.connect(lambda: self._nudge_volume(-VOLUME_BUTTON_STEP))
+        self._volume_up.clicked.connect(lambda: self._nudge_volume(VOLUME_BUTTON_STEP))
         self._toggle.clicked.connect(self._on_toggle)
         self._tap.clicked.connect(self._on_tap)
 
@@ -288,19 +308,56 @@ class MainWindow(QWidget):
         subdivision_row.addWidget(self._subdivision_combo)
         subdivision_row.addWidget(self._mask_container)
         subdivision_row.addStretch()
+        column = QVBoxLayout()
+        column.addWidget(_framed("", self._indicator))
+        column.addWidget(_framed("テンポ", row))
+        tempo_adjust_row = QHBoxLayout()
+        tempo_adjust_row.addWidget(self._tempo_down)
+        tempo_adjust_row.addWidget(self._slider, 1)
+        tempo_adjust_row.addWidget(self._tempo_up)
+        slider_row = QHBoxLayout()
+        slider_row.addWidget(_framed("テンポ調整", tempo_adjust_row), 1)
+        volume_adjust_row = QHBoxLayout()
+        volume_adjust_row.addWidget(self._volume_down)
+        volume_adjust_row.addWidget(self._volume_slider, 1)
+        volume_adjust_row.addWidget(self._volume_up)
+        slider_row.addWidget(_framed("音量", volume_adjust_row), 1)
+        column.addLayout(slider_row)
+        column.addWidget(_framed("拍子", meter_row))
+        column.addWidget(_framed("連符", subdivision_row))
+        self._playlist_panel_open = False
+        self._playlist_base_height = 0
+        self._playlist_button = QPushButton("プレイリスト")
+        self._playlist_button.setCheckable(True)
+        self._playlist_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._playlist_button.setEnabled(setlist_service is not None)
+        self._playlist_button.toggled.connect(self._set_playlist_panel_open)
+        controls_row = QHBoxLayout()
+        controls_row.addWidget(self._toggle, 1)
+        controls_row.addWidget(self._playlist_button)
+        column.addLayout(controls_row)
+        column.addStretch()
+
+        self._playlist_panel: PlaylistPanel | None = None
+        if setlist_service is not None:
+            self._playlist_panel = PlaylistPanel(setlist_service, self)
+            playlist_font = QApplication.font()
+            playlist_font.setPointSizeF(PLAYLIST_FONT_POINT_SIZE)
+            self._playlist_panel.setFont(playlist_font)
+            self._playlist_panel.setFixedWidth(PLAYLIST_PANEL_WIDTH)
+            self._playlist_panel.settings_applied.connect(self._sync_controls_from_controller)
+            self._playlist_panel.hide()
+        body = QHBoxLayout()
+        # 間隔があると、パネル表示時に左の列が狭くなって部品が動くため 0 にする。
+        body.setSpacing(0)
+        body.addLayout(column, 1)
+        if self._playlist_panel is not None:
+            body.addWidget(self._playlist_panel)
         layout = QVBoxLayout(self)
         layout.setMenuBar(self._build_menu_bar())
-        layout.addWidget(_framed("", self._indicator))
-        layout.addWidget(_framed("テンポ", row))
-        slider_row = QHBoxLayout()
-        slider_row.addWidget(_framed("テンポ調整", self._slider), 1)
-        slider_row.addWidget(_framed("音量", self._volume_slider), 1)
-        layout.addLayout(slider_row)
-        layout.addWidget(_framed("拍子", meter_row))
-        layout.addWidget(_framed("連符", subdivision_row))
-        layout.addWidget(self._toggle)
-        layout.addStretch()
+        layout.addLayout(body)
         self.setStyleSheet(STYLE_SHEET)
+        self._restore_window_geometry()
         if (
             update_service is not None
             and _is_frozen()
@@ -325,6 +382,58 @@ class MainWindow(QWidget):
             startup_action.setChecked(service.preferences().check_on_startup)
             startup_action.toggled.connect(service.set_check_on_startup)
         return menu_bar
+
+    def _refresh_playlist_panel(self) -> None:
+        if self._playlist_panel is not None:
+            self._playlist_panel.refresh()
+
+    def _set_playlist_panel_open(self, opened: bool) -> None:
+        panel = self._playlist_panel
+        if panel is None or opened == self._playlist_panel_open:
+            return
+        self._playlist_panel_open = opened
+        self._playlist_button.setChecked(opened)
+        if opened:
+            panel.refresh()
+            self._playlist_base_height = self.height()
+            base_width = self.width()
+            panel.show()
+            self.layout().activate()
+            self.resize(base_width + PLAYLIST_PANEL_WIDTH, self._playlist_base_height)
+        else:
+            panel.hide()
+            # Apply the narrower minimum size first, or resize() is clamped to the open layout.
+            self.layout().activate()
+            self.resize(self.width() - PLAYLIST_PANEL_WIDTH, self._playlist_base_height)
+
+    def _sync_controls_from_controller(self) -> None:
+        values = (
+            (self._spin, self._controller.bpm),
+            (self._slider, self._controller.bpm),
+            (self._volume_slider, self._controller.volume),
+            (
+                self._numerator_combo,
+                self._numerator_combo.findData(self._controller.numerator),
+            ),
+            (
+                self._denominator_combo,
+                self._denominator_combo.findData(self._controller.denominator),
+            ),
+            (
+                self._subdivision_combo,
+                self._subdivision_combo.findData(self._controller.subdivision),
+            ),
+        )
+        for widget, value in values:
+            widget.blockSignals(True)
+            if isinstance(widget, (QSlider, QSpinBox)):
+                widget.setValue(value)
+            else:
+                widget.setCurrentIndex(value)
+            widget.blockSignals(False)
+        self._update_meter_label()
+        self._refresh_mask_buttons()
+        self._refresh_indicator()
 
     def _show_about(self) -> None:
         QMessageBox.about(self, "バージョン情報", f"Ore Metronome\nv{__version__}")
@@ -414,6 +523,9 @@ class MainWindow(QWidget):
     def _nudge(self, delta: int) -> None:
         self._spin.setValue(self._spin.value() + delta)
 
+    def _nudge_volume(self, delta: int) -> None:
+        self._volume_slider.setValue(self._volume_slider.value() + delta)
+
     def _on_bpm_changed(self, bpm: int) -> None:
         self._controller.set_bpm(bpm)
         for widget in (self._spin, self._slider):
@@ -460,20 +572,25 @@ class MainWindow(QWidget):
     def closeEvent(self, event: QCloseEvent) -> None:
         self._controller.save_settings()
         if self._window_store is not None:
-            position = self.pos()
-            self._window_store.save(WindowPosition(position.x(), position.y()))
+            geometry = self.geometry()
+            # パネルを開いたままの幅・高さは含めず、メトロノーム部分のサイズだけを保存する。
+            width, height = geometry.width(), geometry.height()
+            if self._playlist_panel_open:
+                width -= PLAYLIST_PANEL_WIDTH
+                height = self._playlist_base_height
+            self._window_store.save(WindowGeometry(geometry.x(), geometry.y(), width, height))
         super().closeEvent(event)
 
-    def _restore_window_position(self) -> None:
+    def _restore_window_geometry(self) -> None:
         if self._window_store is None:
             return
-        position = self._window_store.load()
-        if position is None:
+        saved = self._window_store.load()
+        if saved is None:
             return
-        # 画面外や画面をまたぐ位置は、外したモニターに取り残されないよう既定位置のままにする。
-        rect = QRect(position.x, position.y, WINDOW_WIDTH, WINDOW_HEIGHT)
+        # 画面外や画面をまたぐ位置・サイズは、外したモニターに取り残されないよう既定のままにする。
+        rect = QRect(saved.x, saved.y, saved.width, saved.height)
         if any(screen.availableGeometry().contains(rect) for screen in QApplication.screens()):
-            self.move(position.x, position.y)
+            self.setGeometry(rect)
 
     def _on_toggle(self) -> None:
         self._controller.toggle()

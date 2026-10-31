@@ -1,7 +1,7 @@
 from dataclasses import replace
 
 from ore_metronome.application.metronome_service import MetronomeService
-from ore_metronome.bootstrap import build_service
+from ore_metronome.bootstrap import build_service, build_setlist_service
 
 
 class FakeStream:
@@ -63,3 +63,18 @@ def test_build_service_falls_back_when_settings_file_is_broken(tmp_path):
     assert service.settings.bpm == 120
     assert not path.exists()
     assert (tmp_path / "settings.json.bak").exists()
+
+
+def test_build_setlist_service_falls_back_when_playlist_file_is_broken(tmp_path):
+    path = tmp_path / "setlists.json"
+    path.write_text("{ broken", encoding="utf-8")
+    metronome = build_service(
+        settings_file=tmp_path / "settings.json",
+        stream_factory=fake_factory,
+    )
+
+    service = build_setlist_service(metronome, setlists_file=path)
+
+    assert service.library.playlists == ()
+    assert not path.exists()
+    assert (tmp_path / "setlists.json.bak").exists()

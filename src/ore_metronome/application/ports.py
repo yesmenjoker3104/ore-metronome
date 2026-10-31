@@ -5,7 +5,7 @@ from typing import Protocol, runtime_checkable
 
 from ore_metronome.domain.models import MetronomeSettings
 from ore_metronome.domain.update import ReleaseInfo, UpdatePreferences
-from ore_metronome.domain.window import WindowPosition
+from ore_metronome.domain.window import WindowGeometry
 
 
 @dataclass(frozen=True)
@@ -80,12 +80,12 @@ class UpdateGateway(Protocol):
 
 @runtime_checkable
 class WindowStateStore(Protocol):
-    def load(self) -> WindowPosition | None:
-        """Loads the saved window position, or returns None if there is none."""
+    def load(self) -> WindowGeometry | None:
+        """Loads the saved window geometry, or returns None if there is none."""
         ...
 
-    def save(self, position: WindowPosition) -> None:
-        """Saves the window position."""
+    def save(self, geometry: WindowGeometry) -> None:
+        """Saves the window geometry."""
         ...
 
 

@@ -1,13 +1,15 @@
-from PySide6.QtCore import QPoint, Qt
-from PySide6.QtWidgets import QGroupBox, QMenuBar
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtWidgets import QApplication, QGroupBox, QMenuBar
 
 from ore_metronome.application.metronome_service import MetronomeService
+from ore_metronome.application.setlist_service import SetlistService
 from ore_metronome.application.update_service import UpdateService
-from ore_metronome.domain.models import BeatLevel
+from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME, BeatLevel
 from ore_metronome.domain.update import ReleaseInfo, UpdatePreferences
-from ore_metronome.domain.window import WindowPosition
+from ore_metronome.domain.window import WindowGeometry
+from ore_metronome.infrastructure.persistence.setlist_repository import SetlistRepository
 from ore_metronome.ui import main_window
-from ore_metronome.ui.controller import MAX_BPM, MetronomeController
+from ore_metronome.ui.controller import MAX_BPM, MIN_BPM, MetronomeController
 from ore_metronome.ui.main_window import MainWindow
 
 
@@ -37,15 +39,15 @@ class FakeStore:
 
 
 class FakeWindowStore:
-    def __init__(self, position: WindowPosition | None = None) -> None:
-        self._position = position
-        self.saved: list[WindowPosition] = []
+    def __init__(self, geometry: WindowGeometry | None = None) -> None:
+        self._geometry = geometry
+        self.saved: list[WindowGeometry] = []
 
-    def load(self) -> WindowPosition | None:
-        return self._position
+    def load(self) -> WindowGeometry | None:
+        return self._geometry
 
-    def save(self, position: WindowPosition) -> None:
-        self.saved.append(position)
+    def save(self, geometry: WindowGeometry) -> None:
+        self.saved.append(geometry)
 
 
 def make_window(qtbot, update_service=None):
@@ -239,12 +241,59 @@ def test_up_and_down_change_bpm_by_one(qtbot):
     assert service.settings.bpm == 120
 
 
+def test_tempo_buttons_change_bpm_by_five_and_sync_slider(qtbot):
+    window, service = make_window(qtbot)
+
+    window._tempo_up.click()
+    assert service.settings.bpm == 125
+    assert window._slider.value() == 125
+
+    window._tempo_down.click()
+    window._tempo_down.click()
+    assert service.settings.bpm == 115
+    assert window._slider.value() == 115
+    assert window._spin.value() == 115
+
+
+def test_tempo_buttons_stop_at_bpm_limits(qtbot):
+    window, service = make_window(qtbot)
+
+    window._spin.setValue(MAX_BPM - 2)
+    window._tempo_up.click()
+    assert service.settings.bpm == MAX_BPM
+
+    window._spin.setValue(MIN_BPM + 2)
+    window._tempo_down.click()
+    assert service.settings.bpm == MIN_BPM
+
+
 def test_volume_slider_syncs_service(qtbot):
     window, service = make_window(qtbot)
 
     window._volume_slider.setValue(30)
 
     assert service.settings.volume == 30
+
+
+def test_volume_buttons_change_volume_by_five_and_stop_at_limits(qtbot):
+    window, service = make_window(qtbot)
+    window._volume_slider.setValue(50)
+
+    window._volume_up.click()
+    assert service.settings.volume == 55
+    assert window._volume_slider.value() == 55
+
+    window._volume_down.click()
+    window._volume_down.click()
+    assert service.settings.volume == 45
+
+    window._volume_slider.setValue(MAX_VOLUME - 2)
+    window._volume_up.click()
+    assert service.settings.volume == MAX_VOLUME
+
+    window._volume_slider.setValue(MIN_VOLUME + 2)
+    window._volume_down.click()
+    assert service.settings.volume == MIN_VOLUME
 
 
 def test_initial_meter_values_follow_settings(qtbot):
@@ -465,35 +514,146 @@ def test_beat_click_does_not_change_first_position_button(qtbot):
     assert window._mask_buttons[0].property("level") == "accent"
 
 
-def test_window_position_is_saved_on_close(qtbot):
+def test_window_geometry_is_saved_on_close(qtbot):
     store = FakeWindowStore()
     service = MetronomeService(audio_output=FakeAudio(), settings_store=FakeStore())
     window = MainWindow(MetronomeController(service), window_store=store)
     qtbot.addWidget(window)
-    window.move(60, 70)
+    window.setGeometry(60, 70, 520, 460)
 
     window.close()
 
-    assert store.saved == [WindowPosition(60, 70)]
+    assert store.saved == [WindowGeometry(60, 70, 520, 460)]
 
 
-def test_saved_window_position_is_restored_when_on_screen(qtbot):
-    store = FakeWindowStore(WindowPosition(60, 70))
+def make_window_with_playlists(qtbot, tmp_path, store=None):
+    metronome = MetronomeService(audio_output=FakeAudio(), settings_store=FakeStore())
+    setlist = SetlistService(metronome, SetlistRepository(tmp_path / "setlists.json"))
+    window = MainWindow(MetronomeController(metronome), window_store=store, setlist_service=setlist)
+    qtbot.addWidget(window)
+    return window
+
+
+def test_playlist_button_opens_panel_on_the_right(qtbot, tmp_path):
+    window = make_window_with_playlists(qtbot, tmp_path)
+    window.show()
+    QApplication.processEvents()
+    window.resize(800, window.height())
+    QApplication.processEvents()
+    width = window.width()
+
+    window._playlist_button.click()
+    QApplication.processEvents()
+
+    assert not window._playlist_panel.isHidden()
+    assert window.width() == width + main_window.PLAYLIST_PANEL_WIDTH
+
+    window._playlist_button.click()
+    QApplication.processEvents()
+
+    assert window._playlist_panel.isHidden()
+    assert window.width() == width
+
+
+def test_window_geometry_saved_without_panel_width(qtbot, tmp_path):
+    store = FakeWindowStore()
+    window = make_window_with_playlists(qtbot, tmp_path, store)
+    window.setGeometry(60, 70, 520, 460)
+    window._playlist_button.click()
+
+    window.close()
+
+    assert store.saved == [WindowGeometry(60, 70, 520, 460)]
+
+
+def test_closing_playlist_panel_restores_window_size(qtbot, tmp_path):
+    window = make_window_with_playlists(qtbot, tmp_path)
+    window.show()
+    QApplication.processEvents()
+    window.resize(600, window.height())
+    QApplication.processEvents()
+    size = (window.width(), window.height())
+
+    window._playlist_button.click()
+    QApplication.processEvents()
+    window._playlist_button.click()
+    QApplication.processEvents()
+
+    assert (window.width(), window.height()) == size
+
+
+def test_opening_playlist_panel_keeps_controls_in_place(qtbot, tmp_path):
+    window = make_window_with_playlists(qtbot, tmp_path)
+    window.show()
+    QApplication.processEvents()
+    controls = (window._indicator, window._slider, window._volume_slider, window._denominator_combo)
+
+    def geometries():
+        return [(w.mapTo(window, w.rect().topLeft()), w.size()) for w in controls]
+
+    before = geometries()
+    window._playlist_button.click()
+    QApplication.processEvents()
+    assert geometries() == before
+
+    window._playlist_button.click()
+    QApplication.processEvents()
+    assert geometries() == before
+
+
+def test_window_has_no_playlist_menu(qtbot, tmp_path):
+    window = make_window_with_playlists(qtbot, tmp_path)
+
+    assert [action.text() for action in window.findChild(QMenuBar).actions()] == ["ヘルプ"]
+
+
+def test_playlist_panel_uses_larger_font_than_default(qtbot, tmp_path):
+    window = make_window_with_playlists(qtbot, tmp_path)
+
+    assert window._playlist_panel.font().pointSizeF() == main_window.PLAYLIST_FONT_POINT_SIZE
+    assert main_window.PLAYLIST_FONT_POINT_SIZE > QApplication.font().pointSizeF()
+
+
+def test_saved_window_geometry_is_restored_when_on_screen(qtbot):
+    store = FakeWindowStore(WindowGeometry(60, 70, 520, 460))
     service = MetronomeService(audio_output=FakeAudio(), settings_store=FakeStore())
     window = MainWindow(MetronomeController(service), window_store=store)
     qtbot.addWidget(window)
 
-    assert window.pos() == QPoint(60, 70)
+    assert window.geometry() == QRect(60, 70, 520, 460)
 
 
-def test_saved_window_position_off_screen_falls_back_to_default(qtbot):
+def test_saved_window_geometry_off_screen_falls_back_to_default(qtbot):
     default_window, _ = make_window(qtbot)
-    store = FakeWindowStore(WindowPosition(100000, 100000))
+    store = FakeWindowStore(WindowGeometry(100000, 100000, 520, 460))
     service = MetronomeService(audio_output=FakeAudio(), settings_store=FakeStore())
     window = MainWindow(MetronomeController(service), window_store=store)
     qtbot.addWidget(window)
 
     assert window.pos() == default_window.pos()
+    assert window.size() == default_window.size()
+
+
+def test_saved_window_size_smaller_than_layout_minimum_is_clamped(qtbot):
+    store = FakeWindowStore(WindowGeometry(60, 70, 50, 50))
+    service = MetronomeService(audio_output=FakeAudio(), settings_store=FakeStore())
+    window = MainWindow(MetronomeController(service), window_store=store)
+    qtbot.addWidget(window)
+
+    window.show()
+
+    assert window.width() >= window.minimumSizeHint().width()
+    assert window.height() >= window.minimumSizeHint().height()
+
+
+def test_saved_window_size_larger_than_screen_falls_back_to_default(qtbot):
+    default_window, _ = make_window(qtbot)
+    store = FakeWindowStore(WindowGeometry(60, 70, 100000, 100000))
+    service = MetronomeService(audio_output=FakeAudio(), settings_store=FakeStore())
+    window = MainWindow(MetronomeController(service), window_store=store)
+    qtbot.addWidget(window)
+
+    assert window.geometry() == default_window.geometry()
 
 
 def test_subdivision_is_enabled_for_any_denominator(qtbot):
