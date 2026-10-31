@@ -3,9 +3,12 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
 
+from ore_metronome.domain.change_up import ChangeUp
 from ore_metronome.domain.meter import Meter
 from ore_metronome.domain.subdivision import validate_count
+from ore_metronome.domain.swing import DEFAULT_SWING_PERCENT, validate_swing_percent
 from ore_metronome.domain.tempo import validate_bpm
+from ore_metronome.domain.tempo_ramp import TempoRamp
 
 MIN_VOLUME = 0
 MAX_VOLUME = 100
@@ -45,10 +48,15 @@ class MetronomeSettings:
     volume: int = MAX_VOLUME
     # 未設定の拍は既定値（1 拍目はアクセント、それ以外は通常）になる。
     beat_levels: Mapping[int, BeatLevel] = field(default_factory=dict)
+    # None のときは無効。有効なときは、小節ごとに BPM を変えたり細分を切り替えたりする。
+    tempo_ramp: TempoRamp | None = None
+    change_up: ChangeUp | None = None
+    swing_percent: int = DEFAULT_SWING_PERCENT
 
     def __post_init__(self) -> None:
         validate_bpm(self.bpm)
         validate_count(self.subdivision)
+        validate_swing_percent(self.swing_percent)
 
         if not MIN_VOLUME <= self.volume <= MAX_VOLUME:
             raise ValueError(f"Volume must be between {MIN_VOLUME} and {MAX_VOLUME}")

@@ -113,7 +113,38 @@ def test_subdivision_track_is_placed_at_equal_intervals_and_plays_with_the_beat(
     assert result[75] == 0.0625
 
 
-def test_silent_subdivision_is_not_rendered():
+def test_swing_moves_offbeat_subdivision_without_moving_downbeat():
+    # 120 BPM, 400 サンプル/秒 → 1拍 = 200 サンプル。
+    # 8分の裏は 75% スウィングで 0.75 拍（150 サンプル）に移る。
+    settings = MetronomeSettings(
+        bpm=120,
+        meter=Meter(2, 4),
+        subdivision=2,
+        swing_percent=75,
+    )
+
+    result = render_bar(settings, make_test_sounds(), sample_rate=400)
+
+    assert result[0] == 0.125 + 0.5
+    assert result[100] == 0.0
+    assert result[150] == 0.0625
+    assert result[151] == 0.03125
+
+
+def test_swing_is_not_applied_to_odd_subdivisions():
+    settings = MetronomeSettings(
+        bpm=120,
+        meter=Meter(2, 4),
+        subdivision=3,
+        swing_percent=75,
+    )
+
+    straight = MetronomeSettings(bpm=120, meter=Meter(2, 4), subdivision=3)
+
+    np.testing.assert_array_equal(
+        render_bar(settings, make_test_sounds(), sample_rate=400),
+        render_bar(straight, make_test_sounds(), sample_rate=400),
+    )
     settings = MetronomeSettings(
         bpm=120,
         meter=Meter(2, 4),

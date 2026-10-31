@@ -1,8 +1,11 @@
 import pytest
 
 from ore_metronome.application.metronome_service import MetronomeService
+from ore_metronome.domain.change_up import ChangeUp, ChangeUpStep
 from ore_metronome.domain.meter import MAX_NUMERATOR, MIN_NUMERATOR
 from ore_metronome.domain.models import BeatLevel
+from ore_metronome.domain.swing import MAX_SWING_PERCENT, MIN_SWING_PERCENT
+from ore_metronome.domain.tempo_ramp import TempoRamp
 from ore_metronome.ui.controller import MAX_BPM, MIN_BPM, MetronomeController
 
 
@@ -152,3 +155,36 @@ def test_cycle_subdivision_position_updates_current_subdivision(controller_and_s
         BeatLevel.SILENT,
     )
     assert controller.subdivision_position_level(2) is BeatLevel.SILENT
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    [(MIN_SWING_PERCENT - 10, MIN_SWING_PERCENT), (MAX_SWING_PERCENT + 10, MAX_SWING_PERCENT)],
+)
+def test_set_swing_percent_clamps_to_range(controller_and_service, requested, expected):
+    controller, service = controller_and_service
+
+    controller.set_swing_percent(requested)
+
+    assert service.settings.swing_percent == expected
+    assert controller.swing_percent == expected
+
+
+def test_practice_settings_are_exposed_and_updated(controller_and_service):
+    controller, service = controller_and_service
+    ramp = TempoRamp(every_bars=4, delta_bpm=5)
+    change_up = ChangeUp(steps=(ChangeUpStep(1, 4), ChangeUpStep(2, 4)))
+
+    controller.set_tempo_ramp(ramp)
+    controller.set_change_up(change_up)
+
+    assert controller.tempo_ramp == ramp
+    assert controller.change_up == change_up
+    assert service.settings.tempo_ramp == ramp
+    assert service.settings.change_up == change_up
+
+    controller.set_tempo_ramp(None)
+    controller.set_change_up(None)
+
+    assert controller.tempo_ramp is None
+    assert controller.change_up is None

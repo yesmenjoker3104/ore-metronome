@@ -119,6 +119,21 @@ def test_current_song_is_marked(qtbot, tmp_path):
     assert song_labels(panel) == ["A", f"{CURRENT_MARK}B"]
 
 
+def test_current_song_row_is_highlighted(qtbot, tmp_path):
+    panel, service, _ = make_panel(qtbot, tmp_path)
+    service.add_playlist("P")
+    service.add_song(0, "A")
+    service.add_song(0, "B")
+    service.apply(0, 1)
+
+    panel.refresh()
+
+    current_label = panel._song_list.itemWidget(panel._song_list.item(1)).findChild(QLabel)
+    other_label = panel._song_list.itemWidget(panel._song_list.item(0)).findChild(QLabel)
+    assert current_label.objectName() == "currentSong"
+    assert other_label.objectName() == ""
+
+
 def test_song_buttons_follow_selection(qtbot, tmp_path):
     panel, service, _ = make_panel(qtbot, tmp_path)
     assert not any(button.isEnabled() for button in panel._song_add)
@@ -157,6 +172,15 @@ def test_panel_has_no_apply_or_song_step_buttons(qtbot, tmp_path):
     labels = {button.text() for button in panel.findChildren(QPushButton)}
 
     assert {"適用", "前の曲", "次の曲"}.isdisjoint(labels)
+
+
+def test_panel_action_buttons_use_accent_style(qtbot, tmp_path):
+    panel, _, _ = make_panel(qtbot, tmp_path)
+
+    for text in ("追加", "名前変更", "更新", "削除"):
+        for button in panel.findChildren(QPushButton):
+            if button.text() == text:
+                assert button.property("variant") == "primary", text
 
 
 def test_moving_songs_with_buttons_reorders_playlist_and_keeps_current_song(qtbot, tmp_path):

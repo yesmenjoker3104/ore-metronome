@@ -8,6 +8,7 @@ import sounddevice as sd
 
 from ore_metronome.application.ports import BeatEvent, BeatEventSink
 from ore_metronome.domain.models import MetronomeSettings
+from ore_metronome.domain.performance import Performance
 from ore_metronome.domain.tempo import beat_seconds_for_meter
 from ore_metronome.infrastructure.audio.renderer import AudioBuffer, render_bar
 from ore_metronome.infrastructure.audio.sounds import SoundKit
@@ -22,6 +23,8 @@ class _BarPlan:
     bar: AudioBuffer
     beat_seconds: float
     beats: int
+    bpm: int
+    subdivision: int
 
 
 class SoundDeviceEngine:
@@ -38,8 +41,9 @@ class SoundDeviceEngine:
         self._stream_factory = stream_factory
         self._beat_sink = beat_sink
         self._lock = threading.Lock()
+        self._performance: Performance | None = None
         self._plan: _BarPlan | None = None
-        self._pending: _BarPlan | None = None
+        self._pending: MetronomeSettings | None = None
         self._beat_index = 0
         self._position = 0
         self._announce_current = False
@@ -82,19 +86,29 @@ class SoundDeviceEngine:
         self._stream = None
 
     def configure(self, settings: MetronomeSettings) -> None:
-        plan = _BarPlan(
+        if self.is_running:
+            # 次の拍から反映する。小節をまたぐ変更は次の小節の先頭で反映される。
+            with self._lock:
+                self._pending = settings
+            return
+
+        performance = Performance(settings)
+        plan = self._plan_for(performance.next_bar())
+        with self._lock:
+            self._performance = performance
+            self._plan = plan
+            self._pending = None
+            self._beat_index = 0
+            self._position = 0
+
+    def _plan_for(self, settings: MetronomeSettings) -> _BarPlan:
+        return _BarPlan(
             bar=render_bar(settings, self._sounds, sample_rate=self._sample_rate),
             beat_seconds=beat_seconds_for_meter(settings.bpm, settings.meter),
             beats=settings.meter.beats_per_bar,
+            bpm=settings.bpm,
+            subdivision=settings.subdivision,
         )
-        with self._lock:
-            if self.is_running:
-                self._pending = plan
-            else:
-                self._plan = plan
-                self._pending = None
-                self._beat_index = 0
-                self._position = 0
 
     def _fill_buffer(self, outdata, frames, time, status) -> None:
         # time.outputBufferDacTime は、このブロックの先頭サンプルが実際に出力される時刻
@@ -130,11 +144,26 @@ class SoundDeviceEngine:
         return len(plan.bar)
 
     def _advance_beat(self, dac_time: float | None, offset_frames: int) -> None:
-        # 拍子が変わるときは、切り替え前の拍の次を新しい拍子で数え直す
-        next_index = (self._beat_index + 1) % self._plan.beats
-        if self._pending is not None:
-            self._plan, self._pending = self._pending, None
-        self._beat_index = next_index % self._plan.beats
+        next_index = self._beat_index + 1
+        new_bar = next_index >= self._plan.beats
+        if new_bar:
+            next_index = 0
+
+        pending = self._pending
+        if pending is not None:
+            self._pending = None
+            self._performance.set_settings(pending)
+            # 拍子が縮んで次の拍が収まらないときは、この拍で小節が変わる
+            if not new_bar and next_index >= pending.meter.beats_per_bar:
+                new_bar = True
+                next_index = 0
+
+        if new_bar:
+            self._plan = self._plan_for(self._performance.next_bar())
+        elif pending is not None:
+            self._plan = self._plan_for(self._performance.current())
+
+        self._beat_index = next_index
         self._position = self._beat_start(self._plan, self._beat_index)
         self._publish_beat(dac_time, offset_frames)
 
@@ -150,6 +179,8 @@ class SoundDeviceEngine:
                 is_downbeat=self._beat_index == 0,
                 is_subdivision=False,
                 play_time=play_time,
+                bpm=self._plan.bpm,
+                subdivision=self._plan.subdivision,
             )
         )
 

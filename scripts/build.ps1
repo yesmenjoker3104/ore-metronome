@@ -25,6 +25,7 @@ Invoke-Python -m PyInstaller --noconfirm --clean --onefile --windowed `
     --version-file build\version_info.txt `
     --add-data 'data\app_icon.png;data' `
     --add-data 'src\ore_metronome\infrastructure\update\apply_update.ps1;ore_metronome\infrastructure\update' `
+    --add-data 'src\ore_metronome\assets\icons;ore_metronome\assets\icons' `
     launch.py
 
 $builtExecutable = Join-Path $projectRoot 'dist\ore-metronome.exe'

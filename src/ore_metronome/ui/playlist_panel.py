@@ -1,14 +1,10 @@
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QDropEvent
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QHBoxLayout,
     QInputDialog,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
@@ -16,69 +12,17 @@ from PySide6.QtWidgets import (
 )
 
 from ore_metronome.application.setlist_service import SetlistService
+from ore_metronome.ui.icons import set_button_icon
+from ore_metronome.ui.theme import ACCENT_COLOR
+from ore_metronome.ui.widgets.movable_list import MovableList
 
 CURRENT_MARK = "▶ "
-MOVE_BUTTON_WIDTH = 30
-MOVE_BUTTON_HEIGHT = 26
 
 
-class _MovableList(QListWidget):
-    move_requested = Signal(int, int)
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-        self.setDefaultDropAction(Qt.DropAction.MoveAction)
-        self.setDropIndicatorShown(True)
-
-    def dropEvent(self, event: QDropEvent) -> None:
-        # Qt 標準の移動は項目を作り直すため、埋め込みの行ウィジェットが消える。
-        # 移動は自前で行い、ボタンと同じ move_requested で通知する。
-        source = self.currentRow()
-        index = self.indexAt(event.position().toPoint())
-        target = index.row() if index.isValid() else self.count() - 1
-        event.setDropAction(Qt.DropAction.IgnoreAction)
-        event.accept()
-        if source >= 0 and target >= 0 and source != target:
-            self.move_requested.emit(source, target)
-
-    def add_row(self, text: str) -> None:
-        item = QListWidgetItem()
-        self.addItem(item)
-        row = self._row_widget(text, item)
-        item.setSizeHint(row.sizeHint())
-        self.setItemWidget(item, row)
-
-    def _row_widget(self, text: str, item: QListWidgetItem) -> QWidget:
-        row = QWidget()
-        row.setObjectName("playlistRow")
-        # 行の背景を透明にして、リストの選択表示が隠れないようにする。
-        row.setStyleSheet("QWidget#playlistRow, QLabel { background: transparent; }")
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(6, 0, 2, 0)
-        layout.setSpacing(4)
-        layout.addWidget(QLabel(text), 1)
-        layout.addWidget(self._move_button("↑", "上へ", item, -1))
-        layout.addWidget(self._move_button("↓", "下へ", item, 1))
-        return row
-
-    def _move_button(
-        self, text: str, tooltip: str, item: QListWidgetItem, delta: int
-    ) -> QPushButton:
-        button = QPushButton(text)
-        button.setToolTip(tooltip)
-        button.setAccessibleName(tooltip)
-        button.setFixedSize(MOVE_BUTTON_WIDTH, MOVE_BUTTON_HEIGHT)
-        button.setStyleSheet("QPushButton { padding: 0px; border-radius: 4px; }")
-        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        button.clicked.connect(lambda: self._request_move(item, delta))
-        return button
-
-    def _request_move(self, item: QListWidgetItem, delta: int) -> None:
-        row = self.row(item)
-        new_row = row + delta
-        if 0 <= new_row < self.count():
-            self.move_requested.emit(row, new_row)
+def _section_title(text: str) -> QLabel:
+    label = QLabel(text)
+    label.setObjectName("sectionTitle")
+    return label
 
 
 class PlaylistPanel(QWidget):
@@ -87,8 +31,8 @@ class PlaylistPanel(QWidget):
     def __init__(self, service: SetlistService, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service = service
-        self._playlist_list = _MovableList()
-        self._song_list = _MovableList()
+        self._playlist_list = MovableList()
+        self._song_list = MovableList()
         self._playlist_list.currentRowChanged.connect(lambda _row: self._populate_songs())
         self._playlist_list.move_requested.connect(self._on_playlist_moved)
         self._song_list.currentRowChanged.connect(lambda _row: self._sync_buttons())
@@ -99,19 +43,23 @@ class PlaylistPanel(QWidget):
         self._song_add: list[QPushButton] = []
         self._song_required: list[QPushButton] = []
 
-        playlist_add = self._button("追加", self._add_playlist)
-        playlist_rename = self._button("名前変更", self._rename_playlist, self._playlist_required)
-        playlist_remove = self._button("削除", self._remove_playlist, self._playlist_required)
+        playlist_add = self._button("追加", self._add_playlist, icon="plus")
+        playlist_rename = self._button(
+            "名前変更", self._rename_playlist, self._playlist_required, icon="rename"
+        )
+        playlist_remove = self._button(
+            "削除", self._remove_playlist, self._playlist_required, icon="delete"
+        )
 
-        song_add = self._button("追加", self._add_song, self._song_add)
-        song_update = self._button("更新", self._update_song, self._song_required)
-        song_remove = self._button("削除", self._remove_song, self._song_required)
+        song_add = self._button("追加", self._add_song, self._song_add, icon="plus")
+        song_update = self._button("更新", self._update_song, self._song_required, icon="update")
+        song_remove = self._button("削除", self._remove_song, self._song_required, icon="delete")
 
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("プレイリスト"))
+        layout.addWidget(_section_title("プレイリスト"))
         layout.addWidget(self._playlist_list)
         layout.addLayout(_row(playlist_add, playlist_rename, playlist_remove))
-        layout.addWidget(QLabel("曲"))
+        layout.addWidget(_section_title("曲"))
         layout.addWidget(self._song_list)
         layout.addLayout(_row(song_add, song_update, song_remove))
         self.refresh()
@@ -125,9 +73,13 @@ class PlaylistPanel(QWidget):
         text: str,
         slot: Callable[[], None],
         group: list[QPushButton] | None = None,
+        *,
+        icon: str,
     ) -> QPushButton:
         button = QPushButton(text)
         button.clicked.connect(slot)
+        set_button_icon(button, icon, ACCENT_COLOR)
+        button.setProperty("variant", "primary")
         if group is not None:
             group.append(button)
         return button
@@ -152,7 +104,7 @@ class PlaylistPanel(QWidget):
             playlist = self._service.library.playlists[playlist_index]
             for song_index, song in enumerate(playlist.items):
                 marked = current == (playlist_index, song_index)
-                self._song_list.add_row(f"{CURRENT_MARK if marked else ''}{song.name}")
+                self._song_list.add_row(f"{CURRENT_MARK if marked else ''}{song.name}", marked)
         self._song_list.setCurrentRow(_clamp(select, self._song_list.count()))
         self._sync_buttons()
 

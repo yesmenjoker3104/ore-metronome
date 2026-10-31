@@ -31,7 +31,7 @@ where = ["src"]
 version = {attr = "ore_metronome.version.__version__"}
 
 [tool.setuptools.package-data]
-ore_metronome = ["assets/*"]
+ore_metronome = ["assets/*", "assets/icons/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -17,6 +17,9 @@ class BeatEvent:
     is_subdivision: bool
     # 音が実際に出力される時刻（AudioOutput.now() と同じ時計）。不明なら None
     play_time: float | None = None
+    # 小節ごとに変わる現在のテンポと細分。テンポアップ・チェンジアップの表示に使う
+    bpm: int | None = None
+    subdivision: int | None = None
 
 
 @runtime_checkable

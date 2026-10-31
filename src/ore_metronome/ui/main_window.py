@@ -32,8 +32,12 @@ from ore_metronome.domain.update import ReleaseInfo
 from ore_metronome.domain.window import WindowGeometry
 from ore_metronome.ui.background_task import BackgroundTask
 from ore_metronome.ui.controller import MAX_BPM, MIN_BPM, MetronomeController
+from ore_metronome.ui.dialogs.practice_dialog import PracticeDialog
 from ore_metronome.ui.dialogs.update_dialog import UpdateChoice, UpdateDialog
+from ore_metronome.ui.icons import set_button_icon
+from ore_metronome.ui.labels import SUBDIVISION_LABELS
 from ore_metronome.ui.playlist_panel import PlaylistPanel
+from ore_metronome.ui.theme import ACCENT_COLOR, BACKGROUND_COLOR
 from ore_metronome.ui.widgets.beat_indicator import BeatIndicator
 from ore_metronome.version import __version__
 
@@ -42,7 +46,7 @@ TICK_INTERVAL_MS = 15
 WINDOW_WIDTH = 496
 WINDOW_HEIGHT = 480
 PLAYLIST_PANEL_WIDTH = 360
-PLAYLIST_FONT_POINT_SIZE = 12.0
+PLAYLIST_FONT_POINT_SIZE = 16.0
 
 MASK_BUTTON_SIZE = 28
 
@@ -53,18 +57,6 @@ MASK_LEVEL_LABELS = {
     BeatLevel.ACCENT: "アクセント",
     BeatLevel.NORMAL: "通常音",
     BeatLevel.SILENT: "音なし",
-}
-
-SUBDIVISION_LABELS = {
-    1: "なし",
-    2: "8分",
-    3: "3連符",
-    4: "16分",
-    5: "5連符",
-    6: "6連符",
-    7: "7連符",
-    8: "32分",
-    9: "9連符",
 }
 
 STYLE_SHEET = """
@@ -95,6 +87,14 @@ QPushButton#toggle {
     color: #0B0B0B;
     font-weight: bold;
     border: none;
+}
+QPushButton[variant="primary"] {
+    border-color: #00E676;
+    color: #00E676;
+}
+QPushButton:disabled {
+    border-color: #2F5E42;
+    color: #2F5E42;
 }
 QPushButton#mask {
     padding: 4px;
@@ -147,6 +147,26 @@ QGroupBox::title {
     padding: 0 6px;
     color: #00E676;
 }
+QLabel#sectionTitle {
+    color: #00E676;
+    font-weight: bold;
+}
+QLabel#currentSong {
+    color: #00E676;
+    font-weight: bold;
+}
+QListWidget {
+    background-color: #111111;
+    border: 1px solid #1F3D2C;
+    border-radius: 8px;
+    padding: 4px;
+}
+QListWidget::item {
+    border-radius: 6px;
+}
+QListWidget::item:selected {
+    background-color: #1F3D2C;
+}
 """
 
 
@@ -193,10 +213,18 @@ class MainWindow(QWidget):
         self._slider.setRange(MIN_BPM, MAX_BPM)
         self._slider.setValue(controller.bpm)
 
-        self._tempo_down = QPushButton("－")
-        self._tempo_up = QPushButton("＋")
-        self._volume_down = QPushButton("－")
-        self._volume_up = QPushButton("＋")
+        self._tempo_down = QPushButton()
+        self._tempo_up = QPushButton()
+        self._volume_down = QPushButton()
+        self._volume_up = QPushButton()
+        set_button_icon(self._tempo_down, "minus")
+        set_button_icon(self._tempo_up, "plus")
+        set_button_icon(self._volume_down, "minus")
+        set_button_icon(self._volume_up, "plus")
+        self._tempo_down.setToolTip("テンポを下げる")
+        self._tempo_up.setToolTip("テンポを上げる")
+        self._volume_down.setToolTip("音量を下げる")
+        self._volume_up.setToolTip("音量を上げる")
         for button in (self._tempo_down, self._tempo_up, self._volume_down, self._volume_up):
             button.setFont(self.font())
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -209,10 +237,11 @@ class MainWindow(QWidget):
         self._toggle = QPushButton()
         self._toggle.setObjectName("toggle")
         self._toggle.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._update_toggle_text()
+        self._update_toggle_appearance()
 
         self._tap = QPushButton("タップ")
         self._tap.setObjectName("tap")
+        set_button_icon(self._tap, "tap")
         self._tap.setFont(self.font())
         self._tap.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._tap_timer = QTimer(self)
@@ -309,7 +338,8 @@ class MainWindow(QWidget):
         subdivision_row.addWidget(self._mask_container)
         subdivision_row.addStretch()
         column = QVBoxLayout()
-        column.addWidget(_framed("", self._indicator))
+        # 縦に余った高さは拍インジケーターが受け取り、ほかの部品の位置は変えない。
+        column.addWidget(_framed("", self._indicator), 1)
         column.addWidget(_framed("テンポ", row))
         tempo_adjust_row = QHBoxLayout()
         tempo_adjust_row.addWidget(self._tempo_down)
@@ -327,16 +357,26 @@ class MainWindow(QWidget):
         column.addWidget(_framed("連符", subdivision_row))
         self._playlist_panel_open = False
         self._playlist_base_height = 0
+        # パネルを開く際にウィンドウ幅を広げた場合のみ True。最大化・全画面では広げない。
+        self._playlist_grew_window = False
+        self._practice_dialog: PracticeDialog | None = None
+        self._practice_button = QPushButton("練習設定")
+        set_button_icon(self._practice_button, "practice", ACCENT_COLOR)
+        self._practice_button.setProperty("variant", "primary")
+        self._practice_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._practice_button.clicked.connect(self._on_practice_clicked)
         self._playlist_button = QPushButton("プレイリスト")
+        set_button_icon(self._playlist_button, "playlist", ACCENT_COLOR)
+        self._playlist_button.setProperty("variant", "primary")
         self._playlist_button.setCheckable(True)
         self._playlist_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._playlist_button.setEnabled(setlist_service is not None)
         self._playlist_button.toggled.connect(self._set_playlist_panel_open)
         controls_row = QHBoxLayout()
         controls_row.addWidget(self._toggle, 1)
+        controls_row.addWidget(self._practice_button)
         controls_row.addWidget(self._playlist_button)
         column.addLayout(controls_row)
-        column.addStretch()
 
         self._playlist_panel: PlaylistPanel | None = None
         if setlist_service is not None:
@@ -397,16 +437,27 @@ class MainWindow(QWidget):
             panel.refresh()
             self._playlist_base_height = self.height()
             base_width = self.width()
+            # 全画面・最大化で幅を広げると画面外にはみ出すため、幅はレイアウトに任せる。
+            # レイアウトの再計算で状態が変わるため、表示より前に判定する。
+            self._playlist_grew_window = not self._fills_screen()
             panel.show()
             self.layout().activate()
-            self.resize(base_width + PLAYLIST_PANEL_WIDTH, self._playlist_base_height)
+            if self._playlist_grew_window:
+                self.resize(base_width + PLAYLIST_PANEL_WIDTH, self._playlist_base_height)
         else:
             panel.hide()
-            # Apply the narrower minimum size first, or resize() is clamped to the open layout.
-            self.layout().activate()
-            self.resize(self.width() - PLAYLIST_PANEL_WIDTH, self._playlist_base_height)
+            grew, self._playlist_grew_window = self._playlist_grew_window, False
+            if grew and not self._fills_screen():
+                # Apply the narrower minimum size first, or resize() is clamped to the open layout.
+                self.layout().activate()
+                self.resize(self.width() - PLAYLIST_PANEL_WIDTH, self._playlist_base_height)
+
+    def _fills_screen(self) -> bool:
+        return self.isMaximized() or self.isFullScreen()
 
     def _sync_controls_from_controller(self) -> None:
+        if self._practice_dialog is not None:
+            self._practice_dialog.refresh()
         values = (
             (self._spin, self._controller.bpm),
             (self._slider, self._controller.bpm),
@@ -528,10 +579,20 @@ class MainWindow(QWidget):
 
     def _on_bpm_changed(self, bpm: int) -> None:
         self._controller.set_bpm(bpm)
+        self._show_bpm(bpm)
+
+    def _show_bpm(self, bpm: int) -> None:
         for widget in (self._spin, self._slider):
             widget.blockSignals(True)
             widget.setValue(bpm)
             widget.blockSignals(False)
+
+    def _on_practice_clicked(self) -> None:
+        if self._practice_dialog is None:
+            self._practice_dialog = PracticeDialog(self._controller, self)
+        self._practice_dialog.show()
+        self._practice_dialog.raise_()
+        self._practice_dialog.activateWindow()
 
     def _on_meter_changed(self) -> None:
         self._controller.set_meter(
@@ -575,7 +636,7 @@ class MainWindow(QWidget):
             geometry = self.geometry()
             # パネルを開いたままの幅・高さは含めず、メトロノーム部分のサイズだけを保存する。
             width, height = geometry.width(), geometry.height()
-            if self._playlist_panel_open:
+            if self._playlist_grew_window and not self._fills_screen():
                 width -= PLAYLIST_PANEL_WIDTH
                 height = self._playlist_base_height
             self._window_store.save(WindowGeometry(geometry.x(), geometry.y(), width, height))
@@ -594,7 +655,10 @@ class MainWindow(QWidget):
 
     def _on_toggle(self) -> None:
         self._controller.toggle()
-        self._update_toggle_text()
+        if not self._controller.is_running:
+            # テンポアップで変わった表示を、保存済みの基準テンポに戻す。
+            self._show_bpm(self._controller.bpm)
+        self._update_toggle_appearance()
 
     def _on_tap(self) -> None:
         self._controller.tap(time.monotonic())
@@ -610,8 +674,10 @@ class MainWindow(QWidget):
         self._tap.style().unpolish(self._tap)
         self._tap.style().polish(self._tap)
 
-    def _update_toggle_text(self) -> None:
-        self._toggle.setText("■ 停止" if self._controller.is_running else "▶ 開始")
+    def _update_toggle_appearance(self) -> None:
+        running = self._controller.is_running
+        self._toggle.setText("停止" if running else "開始")
+        set_button_icon(self._toggle, "stop" if running else "play", BACKGROUND_COLOR)
 
     def _refresh_indicator(self) -> None:
         beats = self._controller.beats_per_bar
@@ -627,6 +693,8 @@ class MainWindow(QWidget):
             return
         for event in self._controller.drain_beats():
             self._indicator.set_active_beat(event.beat_index)
+            if event.bpm is not None:
+                self._show_bpm(event.bpm)
 
         if not self._controller.is_running:
             self._indicator.set_active_beat(None)

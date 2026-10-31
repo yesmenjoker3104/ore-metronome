@@ -3,8 +3,10 @@ from pathlib import Path
 
 import pytest
 
+from ore_metronome.domain.change_up import ChangeUp, ChangeUpStep
 from ore_metronome.domain.meter import Meter
 from ore_metronome.domain.models import BeatLevel, MetronomeSettings
+from ore_metronome.domain.tempo_ramp import TempoRamp
 from ore_metronome.infrastructure.persistence.settings_repository import (
     CURRENT_SCHEMA_VERSION,
     SettingsDataError,
@@ -258,3 +260,76 @@ def test_load_rejects_unknown_beat_level(tmp_path: Path):
 
     with pytest.raises(SettingsDataError, match="Invalid settings"):
         SettingsRepository(path).load()
+
+
+def test_practice_settings_round_trip(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    repository = SettingsRepository(path)
+    settings = MetronomeSettings(
+        bpm=100,
+        meter=Meter(4, 4),
+        subdivision=2,
+        swing_percent=66,
+        tempo_ramp=TempoRamp(
+            every_bars=4,
+            delta_bpm=-5,
+            lower_bpm=60,
+            upper_bpm=200,
+            target_bpm=80,
+        ),
+        change_up=ChangeUp(
+            steps=(ChangeUpStep(1, 4), ChangeUpStep(5, 2), ChangeUpStep(8, 3)),
+        ),
+    )
+
+    repository.save(settings)
+
+    assert repository.load() == settings
+
+
+def test_practice_settings_are_off_when_missing(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": CURRENT_SCHEMA_VERSION,
+                "bpm": 120,
+                "meter": {"numerator": 4, "denominator": 4},
+                "subdivision": 1,
+                "subdivision_masks": {},
+                "accent_enabled": True,
+                "volume": 100,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = SettingsRepository(path).load()
+
+    assert settings is not None
+    assert settings.tempo_ramp is None
+    assert settings.change_up is None
+    assert settings.swing_percent == 50
+
+
+def test_load_rejects_out_of_range_swing(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": CURRENT_SCHEMA_VERSION,
+                "bpm": 120,
+                "meter": {"numerator": 4, "denominator": 4},
+                "subdivision": 2,
+                "subdivision_masks": {},
+                "accent_enabled": True,
+                "volume": 100,
+                "swing_percent": 90,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SettingsDataError, match="Invalid settings"):
+        SettingsRepository(path).load()
+

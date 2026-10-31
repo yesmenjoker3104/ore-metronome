@@ -2,8 +2,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ore_metronome.domain.change_up import ChangeUp, ChangeUpStep
 from ore_metronome.domain.meter import Meter
 from ore_metronome.domain.models import BeatLevel, MetronomeSettings
+from ore_metronome.domain.swing import DEFAULT_SWING_PERCENT
+from ore_metronome.domain.tempo_ramp import TempoRamp
 from ore_metronome.infrastructure.persistence.json_file import write_json_atomically
 
 CURRENT_SCHEMA_VERSION = 1
@@ -96,6 +99,9 @@ class SettingsRepository:
                 str(index): level.value
                 for index, level in settings.beat_levels.items()
             },
+            "tempo_ramp": _encode_tempo_ramp(settings.tempo_ramp),
+            "change_up": _encode_change_up(settings.change_up),
+            "swing_percent": settings.swing_percent,
         }
 
     @staticmethod
@@ -128,6 +134,7 @@ class SettingsRepository:
             for index, level in levels_data.items()
         }
 
+        # 練習設定も後から追加したため、無い設定ファイルも既定値で読めるようにする。
         return MetronomeSettings(
             bpm=data["bpm"],
             meter=Meter(
@@ -139,4 +146,55 @@ class SettingsRepository:
             accent_enabled=data["accent_enabled"],
             volume=data["volume"],
             beat_levels=levels,
+            tempo_ramp=_decode_tempo_ramp(data.get("tempo_ramp")),
+            change_up=_decode_change_up(data.get("change_up")),
+            swing_percent=data.get("swing_percent", DEFAULT_SWING_PERCENT),
         )
+
+
+def _encode_tempo_ramp(ramp: TempoRamp | None) -> dict[str, Any] | None:
+    if ramp is None:
+        return None
+    return {
+        "every_bars": ramp.every_bars,
+        "delta_bpm": ramp.delta_bpm,
+        "lower_bpm": ramp.lower_bpm,
+        "upper_bpm": ramp.upper_bpm,
+        "target_bpm": ramp.target_bpm,
+    }
+
+
+def _decode_tempo_ramp(raw: Any) -> TempoRamp | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise TypeError("tempo_ramp must be an object")
+    return TempoRamp(
+        every_bars=raw["every_bars"],
+        delta_bpm=raw["delta_bpm"],
+        lower_bpm=raw["lower_bpm"],
+        upper_bpm=raw["upper_bpm"],
+        target_bpm=raw["target_bpm"],
+    )
+
+
+def _encode_change_up(change_up: ChangeUp | None) -> list[dict[str, int]] | None:
+    if change_up is None:
+        return None
+    return [
+        {"subdivision": step.subdivision, "bars": step.bars}
+        for step in change_up.steps
+    ]
+
+
+def _decode_change_up(raw: Any) -> ChangeUp | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise TypeError("change_up must be a list")
+    return ChangeUp(
+        steps=tuple(
+            ChangeUpStep(subdivision=item["subdivision"], bars=item["bars"])
+            for item in raw
+        )
+    )

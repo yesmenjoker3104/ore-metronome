@@ -36,7 +36,15 @@ def test_height_is_reserved_for_the_maximum_number_of_rows(qtbot):
     for beats in (1, 4, 16):
         indicator.set_layout([BeatLevel.NORMAL] * beats)
         assert indicator.minimumHeight() == _reserved_height()
-        assert indicator.maximumHeight() == _reserved_height()
+
+
+def test_dots_stay_centred_vertically_when_taller(qtbot):
+    indicator, _ = _make_indicator(qtbot, beats=4)
+    indicator.resize(QSize(WIDTH, _reserved_height() + 100))
+
+    centre_y = indicator._dot_rect(0).center().y()
+
+    assert abs(centre_y - indicator.height() // 2) <= 1
 
 
 def test_clicking_a_dot_emits_its_beat_index(qtbot):

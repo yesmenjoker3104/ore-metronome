@@ -1,7 +1,11 @@
+from dataclasses import replace
+
 import numpy as np
 
+from ore_metronome.domain.change_up import ChangeUp, ChangeUpStep
 from ore_metronome.domain.meter import Meter
 from ore_metronome.domain.models import MetronomeSettings
+from ore_metronome.domain.tempo_ramp import TempoRamp
 from ore_metronome.infrastructure.audio.engine import SoundDeviceEngine
 from ore_metronome.infrastructure.audio.renderer import render_bar
 from ore_metronome.infrastructure.audio.sounds import SoundKit
@@ -304,6 +308,77 @@ def test_now_reports_stream_time_only_while_running():
 
     engine.stop()
     assert engine.now() is None
+
+
+def test_tempo_ramp_changes_bpm_at_the_start_of_each_bar():
+    factory = FakeStreamFactory()
+    engine = make_engine(factory)
+    # 60 BPM → 1 小節ごとに +60 → 2 小節目は 120 BPM
+    ramped = replace(
+        make_settings(),
+        bpm=60,
+        tempo_ramp=TempoRamp(every_bars=1, delta_bpm=60),
+    )
+    engine.start(ramped)
+    stream = factory.streams[0]
+
+    # 60 BPM の 1 小節は 200 サンプル、120 BPM の 1 小節は 100 サンプル
+    first = run_callback(stream, 200)
+    second = run_callback(stream, 100)
+
+    slow_settings = replace(ramped, tempo_ramp=None)
+    fast_settings = replace(ramped, bpm=120, tempo_ramp=None)
+    slow = render_bar(slow_settings, make_sounds(), sample_rate=SAMPLE_RATE)
+    fast = render_bar(fast_settings, make_sounds(), sample_rate=SAMPLE_RATE)
+    np.testing.assert_array_equal(first, slow)
+    np.testing.assert_array_equal(second, fast)
+
+
+def test_change_up_switches_subdivision_at_bar_boundary():
+    factory = FakeStreamFactory()
+    engine = make_engine(factory)
+    change_up = ChangeUp(steps=(ChangeUpStep(1, 1), ChangeUpStep(2, 1)))
+    settings = replace(make_settings(), bpm=120, change_up=change_up)
+    engine.start(settings)
+    stream = factory.streams[0]
+
+    # 120 BPM の 2/4 は 1 小節 100 サンプル
+    first = run_callback(stream, 100)
+    second = run_callback(stream, 100)
+
+    plain_settings = replace(settings, change_up=None)
+    doubled_settings = replace(settings, subdivision=2, change_up=None)
+    plain = render_bar(plain_settings, make_sounds(), sample_rate=SAMPLE_RATE)
+    doubled = render_bar(doubled_settings, make_sounds(), sample_rate=SAMPLE_RATE)
+    np.testing.assert_array_equal(first, plain)
+    np.testing.assert_array_equal(second, doubled)
+
+
+def test_beat_events_carry_the_running_bpm_and_subdivision():
+    factory = FakeStreamFactory()
+    sink = FakeBeatSink()
+    engine = SoundDeviceEngine(
+        make_sounds(),
+        sample_rate=SAMPLE_RATE,
+        stream_factory=factory,
+        beat_sink=sink,
+    )
+    ramped = replace(
+        make_settings(),
+        bpm=60,
+        tempo_ramp=TempoRamp(every_bars=1, delta_bpm=60),
+        change_up=ChangeUp(steps=(ChangeUpStep(1, 1), ChangeUpStep(2, 1))),
+    )
+    engine.start(ramped)
+
+    run_callback(factory.streams[0], 250)
+
+    assert [(e.beat_index, e.bpm, e.subdivision) for e in sink.events] == [
+        (0, 60, 1),
+        (1, 60, 1),
+        (0, 120, 2),
+        (1, 120, 2),
+    ]
 
 
 

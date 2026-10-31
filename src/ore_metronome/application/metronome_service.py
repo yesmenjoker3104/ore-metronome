@@ -1,8 +1,10 @@
 from dataclasses import replace
 
 from ore_metronome.application.ports import AudioOutput, SettingsStore
+from ore_metronome.domain.change_up import ChangeUp
 from ore_metronome.domain.meter import Meter
 from ore_metronome.domain.models import BeatLevel, MetronomeSettings
+from ore_metronome.domain.tempo_ramp import TempoRamp
 
 
 def default_settings() -> MetronomeSettings:
@@ -82,6 +84,15 @@ class MetronomeService:
 
     def set_volume(self, volume: int) -> None:
         self._apply(replace(self._settings, volume=volume))
+
+    def set_tempo_ramp(self, tempo_ramp: TempoRamp | None) -> None:
+        self._apply(replace(self._settings, tempo_ramp=tempo_ramp))
+
+    def set_change_up(self, change_up: ChangeUp | None) -> None:
+        self._apply(replace(self._settings, change_up=change_up))
+
+    def set_swing_percent(self, swing_percent: int) -> None:
+        self._apply(replace(self._settings, swing_percent=swing_percent))
 
     def save_settings(self) -> None:
         self._settings_store.save(self._settings)

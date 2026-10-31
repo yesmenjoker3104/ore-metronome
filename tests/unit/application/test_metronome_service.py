@@ -4,8 +4,10 @@ from ore_metronome.application.metronome_service import (
     MetronomeService,
     default_settings,
 )
+from ore_metronome.domain.change_up import ChangeUp, ChangeUpStep
 from ore_metronome.domain.meter import Meter
 from ore_metronome.domain.models import BeatLevel, MetronomeSettings
+from ore_metronome.domain.tempo_ramp import TempoRamp
 
 
 class FakeAudioOutput:
@@ -264,6 +266,44 @@ def test_set_volume_updates_settings():
     service.set_volume(40)
 
     assert service.settings.volume == 40
+
+
+def test_set_tempo_ramp_updates_settings_and_configures_audio_without_saving():
+    audio = FakeAudioOutput()
+    store = FakeSettingsStore()
+    service = MetronomeService(audio, store)
+    ramp = TempoRamp(every_bars=2, delta_bpm=5)
+
+    service.set_tempo_ramp(ramp)
+
+    assert service.settings.tempo_ramp == ramp
+    assert audio.configured_settings == service.settings
+    assert store.saved_settings is None
+
+
+def test_set_change_up_updates_settings_and_configures_audio_without_saving():
+    audio = FakeAudioOutput()
+    store = FakeSettingsStore()
+    service = MetronomeService(audio, store)
+    change_up = ChangeUp(steps=(ChangeUpStep(2, 4), ChangeUpStep(3, 4)))
+
+    service.set_change_up(change_up)
+
+    assert service.settings.change_up == change_up
+    assert audio.configured_settings == service.settings
+    assert store.saved_settings is None
+
+
+def test_set_swing_percent_updates_settings_and_configures_audio_without_saving():
+    audio = FakeAudioOutput()
+    store = FakeSettingsStore()
+    service = MetronomeService(audio, store)
+
+    service.set_swing_percent(66)
+
+    assert service.settings.swing_percent == 66
+    assert audio.configured_settings == service.settings
+    assert store.saved_settings is None
 
 
 def test_set_beat_level_updates_settings_and_configures_audio_without_saving():

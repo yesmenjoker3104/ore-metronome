@@ -2,6 +2,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ore_metronome.domain.models import BeatLevel, MetronomeSettings
+from ore_metronome.domain.swing import swing_offset_beats
 from ore_metronome.domain.tempo import beat_seconds_for_meter
 from ore_metronome.infrastructure.audio.sounds import SoundKit
 
@@ -41,7 +42,11 @@ def render_bar(
             if level is BeatLevel.SILENT:
                 continue
 
-            position = beat_index + subdivision_index / subdivision
+            position = (
+                beat_index
+                + subdivision_index / subdivision
+                + swing_offset_beats(subdivision_index, subdivision, settings.swing_percent)
+            )
             start_sample = round(position * beat_seconds * sample_rate)
             sound = (
                 sounds.subdivision_accent

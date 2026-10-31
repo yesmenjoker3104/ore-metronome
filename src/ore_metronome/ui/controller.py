@@ -1,8 +1,11 @@
 from ore_metronome.application.metronome_service import MetronomeService
 from ore_metronome.application.ports import BeatEvent
+from ore_metronome.domain.change_up import ChangeUp
 from ore_metronome.domain.meter import MAX_NUMERATOR, MIN_NUMERATOR, Meter
 from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME, BeatLevel
+from ore_metronome.domain.swing import MAX_SWING_PERCENT, MIN_SWING_PERCENT
 from ore_metronome.domain.tap_tempo import TapTempo
+from ore_metronome.domain.tempo_ramp import TempoRamp
 from ore_metronome.infrastructure.audio.beat_queue import BeatQueue
 
 MIN_BPM = 20
@@ -97,6 +100,28 @@ class MetronomeController:
 
     def set_volume(self, volume: int) -> None:
         self._service.set_volume(max(MIN_VOLUME, min(MAX_VOLUME, volume)))
+
+    @property
+    def tempo_ramp(self) -> TempoRamp | None:
+        return self._service.settings.tempo_ramp
+
+    def set_tempo_ramp(self, tempo_ramp: TempoRamp | None) -> None:
+        self._service.set_tempo_ramp(tempo_ramp)
+
+    @property
+    def change_up(self) -> ChangeUp | None:
+        return self._service.settings.change_up
+
+    def set_change_up(self, change_up: ChangeUp | None) -> None:
+        self._service.set_change_up(change_up)
+
+    @property
+    def swing_percent(self) -> int:
+        return self._service.settings.swing_percent
+
+    def set_swing_percent(self, swing_percent: int) -> None:
+        clamped = max(MIN_SWING_PERCENT, min(MAX_SWING_PERCENT, swing_percent))
+        self._service.set_swing_percent(clamped)
 
     def save_settings(self) -> None:
         self._service.save_settings()

@@ -32,8 +32,8 @@ class BeatIndicator(QWidget):
         super().__init__(parent)
         self._levels: tuple[BeatLevel, ...] = ()
         self._active_beat: int | None = None
-        self.setFixedHeight(self._content_height(BEAT_ROWS) + TOP_MARGIN * 2)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setMinimumHeight(self._content_height(BEAT_ROWS) + TOP_MARGIN * 2)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def set_layout(self, levels: Sequence[BeatLevel]) -> None:
@@ -86,9 +86,9 @@ class BeatIndicator(QWidget):
         row, column = divmod(index, BEAT_COLUMNS)
         beats = len(self._levels)
         rows_used = self._rows_used(beats)
-        # 使っている行だけを、3 行ぶんの高さの中で縦の中央に置く。
-        offset = (self._content_height(BEAT_ROWS) - self._content_height(rows_used)) // 2
-        top = TOP_MARGIN + offset + row * DOT_PITCH
+        # 使っている行のブロックを、表示領域の縦の中央に置く。
+        offset = (self.height() - self._content_height(rows_used)) // 2
+        top = offset + row * DOT_PITCH
         # 各行に並ぶ点の数に合わせて、その行を横の中央に置く。
         dots_in_row = min(BEAT_COLUMNS, beats - row * BEAT_COLUMNS)
         left = (self.width() - self._span(dots_in_row)) // 2 + column * DOT_PITCH

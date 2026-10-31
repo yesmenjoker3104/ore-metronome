@@ -1,7 +1,9 @@
+import pytest
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtWidgets import QApplication, QGroupBox, QMenuBar
+from PySide6.QtWidgets import QApplication, QGroupBox, QListWidget, QMenuBar
 
 from ore_metronome.application.metronome_service import MetronomeService
+from ore_metronome.application.ports import BeatEvent
 from ore_metronome.application.setlist_service import SetlistService
 from ore_metronome.application.update_service import UpdateService
 from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME, BeatLevel
@@ -10,7 +12,7 @@ from ore_metronome.domain.window import WindowGeometry
 from ore_metronome.infrastructure.persistence.setlist_repository import SetlistRepository
 from ore_metronome.ui import main_window
 from ore_metronome.ui.controller import MAX_BPM, MIN_BPM, MetronomeController
-from ore_metronome.ui.main_window import MainWindow
+from ore_metronome.ui.main_window import PLAYLIST_FONT_POINT_SIZE, MainWindow
 
 
 class FakeAudio:
@@ -199,11 +201,11 @@ def test_toggle_button_starts_and_stops(qtbot):
 
     window._toggle.click()
     assert service.is_running
-    assert window._toggle.text() == "■ 停止"
+    assert window._toggle.text() == "停止"
 
     window._toggle.click()
     assert not service.is_running
-    assert window._toggle.text() == "▶ 開始"
+    assert window._toggle.text() == "開始"
 
 
 def test_toggle_button_does_not_take_focus(qtbot):
@@ -348,11 +350,10 @@ def test_clicking_beat_indicator_cycles_its_level(qtbot):
     assert window._indicator._levels[1] is BeatLevel.ACCENT
 
 
-def test_window_width_fits_six_dots_per_row_and_height_does_not_change_with_beats(qtbot):
+def test_width_fits_six_dots_per_row_and_height_does_not_change_with_beats(qtbot):
     window, _ = make_window(qtbot)
     window.show()
     indicator = window._indicator
-    assert indicator.minimumHeight() == indicator.maximumHeight()
 
     window_heights = set()
     for beats in (1, 16):
@@ -361,6 +362,24 @@ def test_window_width_fits_six_dots_per_row_and_height_does_not_change_with_beat
 
     assert window.width() == 496
     assert len(window_heights) == 1
+
+
+def test_extra_window_height_goes_to_beat_indicator_only(qtbot):
+    window, _ = make_window(qtbot)
+    window.show()
+    QApplication.processEvents()
+    controls = (window._slider, window._volume_slider, window._denominator_combo, window._toggle)
+    before = [(w.mapTo(window, w.rect().topLeft()).y(), w.size()) for w in controls]
+    indicator_height = window._indicator.height()
+
+    window.resize(window.width(), window.height() + 150)
+    QApplication.processEvents()
+
+    after = [(w.mapTo(window, w.rect().topLeft()).y(), w.size()) for w in controls]
+    assert window._indicator.height() == indicator_height + 150
+    for (old_y, old_size), (new_y, new_size) in zip(before, after, strict=True):
+        assert new_y - old_y == 150
+        assert new_size == old_size
 
 
 def test_tap_button_sits_right_of_bpm_display(qtbot):
@@ -555,6 +574,34 @@ def test_playlist_button_opens_panel_on_the_right(qtbot, tmp_path):
     assert window.width() == width
 
 
+@pytest.mark.parametrize("show", ["showMaximized", "showFullScreen"])
+def test_playlist_panel_stays_on_screen_when_window_is_maximized(qtbot, tmp_path, show):
+    window = make_window_with_playlists(qtbot, tmp_path)
+    getattr(window, show)()
+    QApplication.processEvents()
+    size = window.size()
+
+    window._playlist_button.click()
+    QApplication.processEvents()
+
+    if window.minimumSizeHint().width() > window.screen().availableGeometry().width():
+        pytest.skip("画面幅が開いた状態のレイアウト最小幅より狭いので、全画面状態は検証できない")
+    panel = window._playlist_panel
+    assert panel.isVisible()
+    assert window.isMaximized() or window.isFullScreen()
+    # 幅は、レイアウトの最小幅が要求する分だけ広がる（それ以上は広げない）。
+    assert window.width() == max(size.width(), window.minimumSizeHint().width())
+    assert window.rect().contains(panel.geometry())
+    opened_size = window.size()
+
+    window._playlist_button.click()
+    QApplication.processEvents()
+
+    assert panel.isHidden()
+    assert window.size() == opened_size
+    assert window.isMaximized() or window.isFullScreen()
+
+
 def test_window_geometry_saved_without_panel_width(qtbot, tmp_path):
     store = FakeWindowStore()
     window = make_window_with_playlists(qtbot, tmp_path, store)
@@ -663,4 +710,54 @@ def test_subdivision_is_enabled_for_any_denominator(qtbot):
 
     assert window._subdivision_combo.isEnabled()
     assert window._mask_container.isEnabled()
+
+
+def test_bpm_widgets_follow_the_running_tempo(qtbot, monkeypatch):
+    window, _ = make_window(qtbot)
+    window._controller.set_bpm(120)
+    window._controller.toggle()
+    event = BeatEvent(beat_index=0, is_downbeat=True, is_subdivision=False, bpm=140)
+    monkeypatch.setattr(window._controller, "drain_beats", lambda: [event])
+
+    window._on_tick()
+
+    assert window._spin.value() == 140
+    assert window._slider.value() == 140
+    assert window._controller.bpm == 120
+
+
+def test_stopping_restores_the_base_tempo_on_the_bpm_widgets(qtbot, monkeypatch):
+    window, _ = make_window(qtbot)
+    window._controller.set_bpm(120)
+    window._controller.toggle()
+    event = BeatEvent(beat_index=0, is_downbeat=True, is_subdivision=False, bpm=140)
+    monkeypatch.setattr(window._controller, "drain_beats", lambda: [event])
+    window._on_tick()
+
+    window._on_toggle()
+
+    assert window._spin.value() == 120
+    assert window._slider.value() == 120
+
+
+def test_practice_button_reuses_one_dialog(qtbot):
+    window, _ = make_window(qtbot)
+    window.show()
+
+    window._practice_button.click()
+    first = window._practice_dialog
+    window._practice_button.click()
+
+    assert first is window._practice_dialog
+    assert first.isVisible()
+
+
+def test_playlist_lists_use_the_playlist_font_size(qtbot, tmp_path):
+    window = make_window_with_playlists(qtbot, tmp_path)
+
+    lists = window._playlist_panel.findChildren(QListWidget)
+
+    assert lists
+    for playlist_list in lists:
+        assert playlist_list.font().pointSizeF() == PLAYLIST_FONT_POINT_SIZE
 

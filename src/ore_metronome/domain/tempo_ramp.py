@@ -25,8 +25,11 @@ class TempoRamp:
             if not (self.lower_bpm <= self.target_bpm <= self.upper_bpm):
                 raise ValueError("target_bpm must be within the range of lower_bpm and upper_bpm")
 
+    def is_change_bar(self, bar_number: int) -> bool:
+        return bar_number > 1 and (bar_number - 1) % self.every_bars == 0
+
     def next_bpm(self, current_bpm: int, bar_number: int) -> int:
-        if bar_number <= 1 or (bar_number - 1) % self.every_bars != 0:
+        if not self.is_change_bar(bar_number):
             return current_bpm
         if self.reached_target(current_bpm):
             return current_bpm
