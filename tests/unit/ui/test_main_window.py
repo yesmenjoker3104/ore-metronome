@@ -13,6 +13,7 @@ from ore_metronome.infrastructure.persistence.setlist_repository import SetlistR
 from ore_metronome.ui import main_window
 from ore_metronome.ui.controller import MAX_BPM, MIN_BPM, MetronomeController
 from ore_metronome.ui.main_window import PLAYLIST_FONT_POINT_SIZE, MainWindow
+from ore_metronome.ui.theme import ACCENT_COLOR
 
 
 class FakeAudio:
@@ -394,6 +395,19 @@ def test_tap_button_sits_right_of_bpm_display(qtbot):
     assert abs(tap_rect.center().y() - spin_rect.center().y()) < spin_rect.height() / 2
 
 
+def test_tap_button_icon_is_accent_green(qtbot):
+    window, _ = make_window(qtbot)
+    image = window._tap.icon().pixmap(96, 96).toImage()
+    opaque = {
+        image.pixelColor(x, y).name()
+        for x in range(image.width())
+        for y in range(image.height())
+        if image.pixelColor(x, y).alpha() == 255
+    }
+
+    assert opaque == {ACCENT_COLOR.lower()}
+
+
 def test_tap_button_keeps_font_size_while_measuring(qtbot):
     window, _ = make_window(qtbot)
     window.show()
@@ -760,4 +774,3 @@ def test_playlist_lists_use_the_playlist_font_size(qtbot, tmp_path):
     assert lists
     for playlist_list in lists:
         assert playlist_list.font().pointSizeF() == PLAYLIST_FONT_POINT_SIZE
-

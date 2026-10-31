@@ -241,7 +241,7 @@ class MainWindow(QWidget):
 
         self._tap = QPushButton("タップ")
         self._tap.setObjectName("tap")
-        set_button_icon(self._tap, "tap")
+        set_button_icon(self._tap, "tap", ACCENT_COLOR)
         self._tap.setFont(self.font())
         self._tap.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._tap_timer = QTimer(self)
