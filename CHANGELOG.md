@@ -2,7 +2,7 @@
 
 このプロジェクトの変更履歴です。形式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に従います。
 
-## [Unreleased]
+## [0.4.0] - 2026-11-15
 
 ### Added
 - 練習設定ダイアログに「カウントイン・ミュート・自動停止」を追加
