@@ -1,6 +1,13 @@
 import pytest
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtWidgets import QApplication, QComboBox, QGroupBox, QListWidget, QMenuBar
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QGroupBox,
+    QListWidget,
+    QMenuBar,
+    QPushButton,
+)
 
 from ore_metronome.application.metronome_service import MetronomeService
 from ore_metronome.application.ports import BeatEvent
@@ -712,7 +719,19 @@ def test_changing_playlist_font_size_applies_and_saves_it(qtbot, tmp_path):
     assert font_store.saved == [PlaylistFontSize.LARGE]
 
 
-def test_large_playlist_font_widens_the_open_panel_to_fit(qtbot, tmp_path):
+def test_playlist_buttons_keep_the_startup_size_for_every_font_size(qtbot, tmp_path):
+    font_store = FakeFontStore(PlaylistFontSize.LARGE)
+    window = make_window_with_playlists(qtbot, tmp_path, font_store=font_store)
+
+    buttons = window._playlist_panel.findChildren(QPushButton)
+
+    assert buttons
+    for button in buttons:
+        expected = PLAYLIST_FONT_POINT_SIZES[PlaylistFontSize.SMALL]
+        assert button.font().pointSizeF() == expected
+
+
+def test_large_playlist_font_keeps_the_playlist_panel_width(qtbot, tmp_path):
     window = make_window_with_playlists(qtbot, tmp_path)
     window.show()
     QApplication.processEvents()
@@ -725,8 +744,8 @@ def test_large_playlist_font_widens_the_open_panel_to_fit(qtbot, tmp_path):
     combo.setCurrentIndex(combo.findData(PlaylistFontSize.LARGE))
     QApplication.processEvents()
 
-    assert panel.width() >= panel.sizeHint().width()
-    assert window.width() == width + panel.width() - main_window.PLAYLIST_PANEL_WIDTH
+    assert panel.width() == main_window.PLAYLIST_PANEL_WIDTH
+    assert window.width() == width
 
 
 def test_saved_window_geometry_is_restored_when_on_screen(qtbot):

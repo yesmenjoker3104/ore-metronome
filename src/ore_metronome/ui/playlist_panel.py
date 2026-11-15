@@ -1,6 +1,7 @@
 from collections.abc import Callable
 
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -92,9 +93,7 @@ class PlaylistPanel(QWidget):
         self.font_size_changed.emit(size)
 
     def _apply_font_size(self, size: PlaylistFontSize) -> None:
-        font = QApplication.font()
-        font.setPointSizeF(PLAYLIST_FONT_POINT_SIZES[size])
-        self.setFont(font)
+        self.setFont(_font_at(size))
 
     def _button(
         self,
@@ -105,6 +104,8 @@ class PlaylistPanel(QWidget):
         icon: str,
     ) -> QPushButton:
         button = QPushButton(text)
+        # ボタンは文字サイズの設定に関わらず、起動時の大きさのまま表示する。
+        button.setFont(_font_at(PlaylistFontSize.SMALL))
         button.clicked.connect(slot)
         set_button_icon(button, icon, ACCENT_COLOR)
         button.setProperty("variant", "primary")
@@ -260,6 +261,12 @@ class PlaylistPanel(QWidget):
             return
         self._service.remove_song(playlist_index, song_index)
         self._populate_songs(song_index)
+
+
+def _font_at(size: PlaylistFontSize) -> QFont:
+    font = QApplication.font()
+    font.setPointSizeF(PLAYLIST_FONT_POINT_SIZES[size])
+    return font
 
 
 def _row(*buttons: QWidget) -> QHBoxLayout:
