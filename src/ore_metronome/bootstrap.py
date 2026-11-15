@@ -16,11 +16,13 @@ from ore_metronome.infrastructure.audio.engine import (
 )
 from ore_metronome.infrastructure.audio.sounds import generate_default_sounds
 from ore_metronome.infrastructure.persistence.paths import (
+    playlist_font_path,
     setlists_path,
     settings_path,
     update_preferences_path,
     window_state_path,
 )
+from ore_metronome.infrastructure.persistence.playlist_font_store import JsonPlaylistFontStore
 from ore_metronome.infrastructure.persistence.setlist_repository import (
     SetlistDataError,
     SetlistRepository,
@@ -94,3 +96,7 @@ def build_setlist_service(
 
 def build_window_store(*, state_file: Path | None = None) -> JsonWindowStore:
     return JsonWindowStore(state_file or window_state_path())
+
+
+def build_playlist_font_store(*, font_file: Path | None = None) -> JsonPlaylistFontStore:
+    return JsonPlaylistFontStore(font_file or playlist_font_path())

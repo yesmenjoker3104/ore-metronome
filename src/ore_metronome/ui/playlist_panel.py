@@ -2,6 +2,8 @@ from collections.abc import Callable
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -12,7 +14,9 @@ from PySide6.QtWidgets import (
 )
 
 from ore_metronome.application.setlist_service import SetlistService
+from ore_metronome.domain.playlist_font import PLAYLIST_FONT_POINT_SIZES, PlaylistFontSize
 from ore_metronome.ui.icons import set_button_icon
+from ore_metronome.ui.labels import PLAYLIST_FONT_SIZE_LABELS
 from ore_metronome.ui.theme import ACCENT_COLOR
 from ore_metronome.ui.widgets.movable_list import MovableList
 
@@ -27,8 +31,14 @@ def _section_title(text: str) -> QLabel:
 
 class PlaylistPanel(QWidget):
     settings_applied = Signal()
+    font_size_changed = Signal(object)
 
-    def __init__(self, service: SetlistService, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        service: SetlistService,
+        font_size: PlaylistFontSize = PlaylistFontSize.SMALL,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self._service = service
         self._playlist_list = MovableList()
@@ -38,6 +48,13 @@ class PlaylistPanel(QWidget):
         self._song_list.currentRowChanged.connect(lambda _row: self._sync_buttons())
         self._song_list.itemDoubleClicked.connect(lambda _item: self._apply_selected_song())
         self._song_list.move_requested.connect(self._on_song_moved)
+
+        self._font_size_combo = QComboBox()
+        for size, label in PLAYLIST_FONT_SIZE_LABELS.items():
+            self._font_size_combo.addItem(label, size)
+        self._font_size_combo.setCurrentIndex(self._font_size_combo.findData(font_size))
+        self._font_size_combo.currentIndexChanged.connect(self._on_font_size_changed)
+        self._apply_font_size(font_size)
 
         self._playlist_required: list[QPushButton] = []
         self._song_add: list[QPushButton] = []
@@ -56,6 +73,7 @@ class PlaylistPanel(QWidget):
         song_remove = self._button("削除", self._remove_song, self._song_required, icon="delete")
 
         layout = QVBoxLayout(self)
+        layout.addLayout(_font_size_row(QLabel("文字サイズ"), self._font_size_combo))
         layout.addWidget(_section_title("プレイリスト"))
         layout.addWidget(self._playlist_list)
         layout.addLayout(_row(playlist_add, playlist_rename, playlist_remove))
@@ -67,6 +85,16 @@ class PlaylistPanel(QWidget):
     def refresh(self) -> None:
         self._populate_playlists(self._playlist_list.currentRow())
         self._populate_songs()
+
+    def _on_font_size_changed(self) -> None:
+        size = PlaylistFontSize(self._font_size_combo.currentData())
+        self._apply_font_size(size)
+        self.font_size_changed.emit(size)
+
+    def _apply_font_size(self, size: PlaylistFontSize) -> None:
+        font = QApplication.font()
+        font.setPointSizeF(PLAYLIST_FONT_POINT_SIZES[size])
+        self.setFont(font)
 
     def _button(
         self,
@@ -234,10 +262,18 @@ class PlaylistPanel(QWidget):
         self._populate_songs(song_index)
 
 
-def _row(*buttons: QPushButton) -> QHBoxLayout:
+def _row(*buttons: QWidget) -> QHBoxLayout:
     row = QHBoxLayout()
     for button in buttons:
         row.addWidget(button)
+    return row
+
+
+def _font_size_row(label: QLabel, combo: QComboBox) -> QHBoxLayout:
+    row = QHBoxLayout()
+    row.addWidget(label)
+    row.addWidget(combo)
+    row.addStretch()
     return row
 
 

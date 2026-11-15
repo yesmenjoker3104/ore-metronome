@@ -21,11 +21,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ore_metronome.application.ports import WindowStateStore
+from ore_metronome.application.ports import PlaylistFontStore, WindowStateStore
 from ore_metronome.application.setlist_service import SetlistService
 from ore_metronome.application.update_service import UpdateService
 from ore_metronome.domain.meter import ALLOWED_DENOMINATORS, MAX_NUMERATOR, MIN_NUMERATOR
 from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME, BeatLevel
+from ore_metronome.domain.playlist_font import PlaylistFontSize
 from ore_metronome.domain.subdivision import ALLOWED_COUNTS
 from ore_metronome.domain.tap_tempo import RESET_SECONDS
 from ore_metronome.domain.update import ReleaseInfo
@@ -46,7 +47,6 @@ TICK_INTERVAL_MS = 15
 WINDOW_WIDTH = 496
 WINDOW_HEIGHT = 480
 PLAYLIST_PANEL_WIDTH = 360
-PLAYLIST_FONT_POINT_SIZE = 16.0
 
 MASK_BUTTON_SIZE = 28
 
@@ -191,12 +191,14 @@ class MainWindow(QWidget):
         update_service: UpdateService | None = None,
         window_store: WindowStateStore | None = None,
         setlist_service: SetlistService | None = None,
+        playlist_font_store: PlaylistFontStore | None = None,
     ) -> None:
         super().__init__()
         self._controller = controller
         self._update_service = update_service
         self._window_store = window_store
         self._setlist_service = setlist_service
+        self._playlist_font_store = playlist_font_store
         self._active_task: BackgroundTask | None = None
         self._manual_check = False
         self.setWindowTitle(f"Ore Metronome v{__version__}")
@@ -395,11 +397,11 @@ class MainWindow(QWidget):
 
         self._playlist_panel: PlaylistPanel | None = None
         if setlist_service is not None:
-            self._playlist_panel = PlaylistPanel(setlist_service, self)
-            playlist_font = QApplication.font()
-            playlist_font.setPointSizeF(PLAYLIST_FONT_POINT_SIZE)
-            self._playlist_panel.setFont(playlist_font)
-            self._playlist_panel.setFixedWidth(PLAYLIST_PANEL_WIDTH)
+            self._playlist_panel = PlaylistPanel(
+                setlist_service, self._load_playlist_font_size(), self
+            )
+            self._playlist_panel.font_size_changed.connect(self._on_playlist_font_size_changed)
+            self._fit_playlist_panel_width()
             self._playlist_panel.settings_applied.connect(self._sync_controls_from_controller)
             self._playlist_panel.hide()
         body = QHBoxLayout()
@@ -442,6 +444,32 @@ class MainWindow(QWidget):
         if self._playlist_panel is not None:
             self._playlist_panel.refresh()
 
+    def _load_playlist_font_size(self) -> PlaylistFontSize:
+        if self._playlist_font_store is None:
+            return PlaylistFontSize.SMALL
+        return self._playlist_font_store.load()
+
+    def _on_playlist_font_size_changed(self, size: PlaylistFontSize) -> None:
+        self._fit_playlist_panel_width()
+        if self._playlist_font_store is not None:
+            self._playlist_font_store.save(size)
+
+    def _playlist_panel_width(self) -> int:
+        return self._playlist_panel.width() if self._playlist_panel is not None else 0
+
+    def _fit_playlist_panel_width(self) -> None:
+        panel = self._playlist_panel
+        if panel is None:
+            return
+        old_width = panel.width()
+        # 文字サイズが大きいとボタン行が収まらないため、必要な幅まで広げる。
+        new_width = max(PLAYLIST_PANEL_WIDTH, panel.sizeHint().width())
+        if new_width == old_width:
+            return
+        panel.setFixedWidth(new_width)
+        if self._playlist_panel_open and self._playlist_grew_window and not self._fills_screen():
+            self.resize(self.width() + new_width - old_width, self.height())
+
     def _set_playlist_panel_open(self, opened: bool) -> None:
         panel = self._playlist_panel
         if panel is None or opened == self._playlist_panel_open:
@@ -458,14 +486,14 @@ class MainWindow(QWidget):
             panel.show()
             self.layout().activate()
             if self._playlist_grew_window:
-                self.resize(base_width + PLAYLIST_PANEL_WIDTH, self._playlist_base_height)
+                self.resize(base_width + self._playlist_panel_width(), self._playlist_base_height)
         else:
             panel.hide()
             grew, self._playlist_grew_window = self._playlist_grew_window, False
             if grew and not self._fills_screen():
                 # Apply the narrower minimum size first, or resize() is clamped to the open layout.
                 self.layout().activate()
-                self.resize(self.width() - PLAYLIST_PANEL_WIDTH, self._playlist_base_height)
+                self.resize(self.width() - self._playlist_panel_width(), self._playlist_base_height)
 
     def _fills_screen(self) -> bool:
         return self.isMaximized() or self.isFullScreen()
@@ -655,7 +683,7 @@ class MainWindow(QWidget):
             # パネルを開いたままの幅・高さは含めず、メトロノーム部分のサイズだけを保存する。
             width, height = geometry.width(), geometry.height()
             if self._playlist_grew_window and not self._fills_screen():
-                width -= PLAYLIST_PANEL_WIDTH
+                width -= self._playlist_panel_width()
                 height = self._playlist_base_height
             self._window_store.save(WindowGeometry(geometry.x(), geometry.y(), width, height))
         super().closeEvent(event)

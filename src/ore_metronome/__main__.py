@@ -6,6 +6,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from ore_metronome.bootstrap import (
+    build_playlist_font_store,
     build_service,
     build_setlist_service,
     build_update_service,
@@ -39,6 +40,7 @@ def main() -> int:
         build_update_service(),
         build_window_store(),
         build_setlist_service(service),
+        playlist_font_store=build_playlist_font_store(),
     )
     window.show()
     try:

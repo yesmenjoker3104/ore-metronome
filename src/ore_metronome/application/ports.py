@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from ore_metronome.domain.models import MetronomeSettings
+from ore_metronome.domain.playlist_font import PlaylistFontSize
 from ore_metronome.domain.update import ReleaseInfo, UpdatePreferences
 from ore_metronome.domain.window import WindowGeometry
 
@@ -114,6 +115,17 @@ class UpdateStore(Protocol):
 
     def save(self, preferences: UpdatePreferences) -> None:
         """Saves the update preferences."""
+        ...
+
+
+@runtime_checkable
+class PlaylistFontStore(Protocol):
+    def load(self) -> PlaylistFontSize:
+        """Loads the playlist font size, or returns the default if it is missing."""
+        ...
+
+    def save(self, size: PlaylistFontSize) -> None:
+        """Saves the playlist font size."""
         ...
 
 

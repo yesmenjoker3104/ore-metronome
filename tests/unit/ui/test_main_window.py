@@ -1,18 +1,19 @@
 import pytest
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtWidgets import QApplication, QGroupBox, QListWidget, QMenuBar
+from PySide6.QtWidgets import QApplication, QComboBox, QGroupBox, QListWidget, QMenuBar
 
 from ore_metronome.application.metronome_service import MetronomeService
 from ore_metronome.application.ports import BeatEvent
 from ore_metronome.application.setlist_service import SetlistService
 from ore_metronome.application.update_service import UpdateService
 from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME, BeatLevel
+from ore_metronome.domain.playlist_font import PLAYLIST_FONT_POINT_SIZES, PlaylistFontSize
 from ore_metronome.domain.update import ReleaseInfo, UpdatePreferences
 from ore_metronome.domain.window import WindowGeometry
 from ore_metronome.infrastructure.persistence.setlist_repository import SetlistRepository
 from ore_metronome.ui import main_window
 from ore_metronome.ui.controller import MAX_BPM, MIN_BPM, MetronomeController
-from ore_metronome.ui.main_window import PLAYLIST_FONT_POINT_SIZE, MainWindow
+from ore_metronome.ui.main_window import MainWindow
 from ore_metronome.ui.theme import ACCENT_COLOR
 
 
@@ -57,6 +58,18 @@ class FakeWindowStore:
 
     def save(self, geometry: WindowGeometry) -> None:
         self.saved.append(geometry)
+
+
+class FakeFontStore:
+    def __init__(self, size: PlaylistFontSize = PlaylistFontSize.SMALL) -> None:
+        self._size = size
+        self.saved: list[PlaylistFontSize] = []
+
+    def load(self) -> PlaylistFontSize:
+        return self._size
+
+    def save(self, size: PlaylistFontSize) -> None:
+        self.saved.append(size)
 
 
 def make_window(qtbot, update_service=None):
@@ -565,10 +578,15 @@ def test_window_geometry_is_saved_on_close(qtbot):
     assert store.saved == [WindowGeometry(60, 70, 520, 460)]
 
 
-def make_window_with_playlists(qtbot, tmp_path, store=None):
+def make_window_with_playlists(qtbot, tmp_path, store=None, font_store=None):
     metronome = MetronomeService(audio_output=FakeAudio(), settings_store=FakeStore())
     setlist = SetlistService(metronome, SetlistRepository(tmp_path / "setlists.json"))
-    window = MainWindow(MetronomeController(metronome), window_store=store, setlist_service=setlist)
+    window = MainWindow(
+        MetronomeController(metronome),
+        window_store=store,
+        setlist_service=setlist,
+        playlist_font_store=font_store,
+    )
     qtbot.addWidget(window)
     return window
 
@@ -674,11 +692,41 @@ def test_window_has_no_playlist_menu(qtbot, tmp_path):
     assert [action.text() for action in window.findChild(QMenuBar).actions()] == ["ヘルプ"]
 
 
-def test_playlist_panel_uses_larger_font_than_default(qtbot, tmp_path):
-    window = make_window_with_playlists(qtbot, tmp_path)
+def test_playlist_panel_uses_the_saved_font_size(qtbot, tmp_path):
+    font_store = FakeFontStore(PlaylistFontSize.MEDIUM)
+    window = make_window_with_playlists(qtbot, tmp_path, font_store=font_store)
 
-    assert window._playlist_panel.font().pointSizeF() == main_window.PLAYLIST_FONT_POINT_SIZE
-    assert main_window.PLAYLIST_FONT_POINT_SIZE > QApplication.font().pointSizeF()
+    expected = PLAYLIST_FONT_POINT_SIZES[PlaylistFontSize.MEDIUM]
+    assert window._playlist_panel.font().pointSizeF() == expected
+
+
+def test_changing_playlist_font_size_applies_and_saves_it(qtbot, tmp_path):
+    font_store = FakeFontStore()
+    window = make_window_with_playlists(qtbot, tmp_path, font_store=font_store)
+    combo = window._playlist_panel.findChild(QComboBox)
+
+    combo.setCurrentIndex(combo.findData(PlaylistFontSize.LARGE))
+
+    expected = PLAYLIST_FONT_POINT_SIZES[PlaylistFontSize.LARGE]
+    assert window._playlist_panel.font().pointSizeF() == expected
+    assert font_store.saved == [PlaylistFontSize.LARGE]
+
+
+def test_large_playlist_font_widens_the_open_panel_to_fit(qtbot, tmp_path):
+    window = make_window_with_playlists(qtbot, tmp_path)
+    window.show()
+    QApplication.processEvents()
+    window._playlist_button.click()
+    QApplication.processEvents()
+    width = window.width()
+    panel = window._playlist_panel
+    combo = panel.findChild(QComboBox)
+
+    combo.setCurrentIndex(combo.findData(PlaylistFontSize.LARGE))
+    QApplication.processEvents()
+
+    assert panel.width() >= panel.sizeHint().width()
+    assert window.width() == width + panel.width() - main_window.PLAYLIST_PANEL_WIDTH
 
 
 def test_saved_window_geometry_is_restored_when_on_screen(qtbot):
@@ -809,7 +857,8 @@ def test_playlist_lists_use_the_playlist_font_size(qtbot, tmp_path):
 
     assert lists
     for playlist_list in lists:
-        assert playlist_list.font().pointSizeF() == PLAYLIST_FONT_POINT_SIZE
+        expected = PLAYLIST_FONT_POINT_SIZES[PlaylistFontSize.SMALL]
+        assert playlist_list.font().pointSizeF() == expected
 
 
 class CountingAudio(FakeAudio):

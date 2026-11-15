@@ -28,3 +28,7 @@ def update_preferences_path() -> Path:
 
 def window_state_path() -> Path:
     return app_data_dir() / "window.json"
+
+
+def playlist_font_path() -> Path:
+    return app_data_dir() / "playlist_font.json"
