@@ -76,6 +76,17 @@ def test_reset_counter_restarts_bars_and_time():
     assert [stop for _, stop in results] == [False, True]
 
 
+def test_set_rules_keeps_the_bar_counter():
+    session = Session()
+    run_bars(session, 2)
+
+    session.set_rules(mute=None, stop_after_bars=3, stop_after_minutes=None)
+    results = run_bars(session, 1)
+
+    assert session.bars_done == 3
+    assert [stop for _, stop in results] == [True]
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [

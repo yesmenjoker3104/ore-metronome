@@ -5,6 +5,7 @@ from typing import Any
 from ore_metronome.domain.change_up import ChangeUp, ChangeUpStep
 from ore_metronome.domain.meter import Meter
 from ore_metronome.domain.models import BeatLevel, MetronomeSettings
+from ore_metronome.domain.session import MuteCycle
 from ore_metronome.domain.swing import DEFAULT_SWING_PERCENT
 from ore_metronome.domain.tempo_ramp import TempoRamp
 from ore_metronome.infrastructure.persistence.json_file import write_json_atomically
@@ -102,6 +103,10 @@ class SettingsRepository:
             "tempo_ramp": _encode_tempo_ramp(settings.tempo_ramp),
             "change_up": _encode_change_up(settings.change_up),
             "swing_percent": settings.swing_percent,
+            "count_in_bars": settings.count_in_bars,
+            "mute_cycle": _encode_mute_cycle(settings.mute_cycle),
+            "stop_after_bars": settings.stop_after_bars,
+            "stop_after_minutes": settings.stop_after_minutes,
         }
 
     @staticmethod
@@ -149,7 +154,25 @@ class SettingsRepository:
             tempo_ramp=_decode_tempo_ramp(data.get("tempo_ramp")),
             change_up=_decode_change_up(data.get("change_up")),
             swing_percent=data.get("swing_percent", DEFAULT_SWING_PERCENT),
+            count_in_bars=data.get("count_in_bars", 0),
+            mute_cycle=_decode_mute_cycle(data.get("mute_cycle")),
+            stop_after_bars=data.get("stop_after_bars"),
+            stop_after_minutes=data.get("stop_after_minutes"),
         )
+
+
+def _encode_mute_cycle(cycle: MuteCycle | None) -> dict[str, int] | None:
+    if cycle is None:
+        return None
+    return {"play_bars": cycle.play_bars, "mute_bars": cycle.mute_bars}
+
+
+def _decode_mute_cycle(raw: Any) -> MuteCycle | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise TypeError("mute_cycle must be an object")
+    return MuteCycle(play_bars=raw["play_bars"], mute_bars=raw["mute_bars"])
 
 
 def _encode_tempo_ramp(ramp: TempoRamp | None) -> dict[str, Any] | None:

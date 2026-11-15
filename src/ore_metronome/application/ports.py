@@ -50,6 +50,20 @@ class AudioOutput(Protocol):
         """Configures the audio output with the given metronome settings."""
         ...
 
+    @property
+    def finished(self) -> bool:
+        """Indicates whether playback reached its automatic stop condition."""
+        ...
+
+    @property
+    def bars_done(self) -> int:
+        """Returns the number of bars played since the counter was last reset."""
+        ...
+
+    def reset_counter(self) -> None:
+        """Resets the bar counter and the automatic stop timer."""
+        ...
+
 @runtime_checkable
 class SettingsStore(Protocol):
     def load(self) -> MetronomeSettings | None:

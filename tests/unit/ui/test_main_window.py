@@ -32,6 +32,12 @@ class FakeAudio:
     def configure(self, settings) -> None:
         pass
 
+    finished = False
+    bars_done = 0
+
+    def reset_counter(self) -> None:
+        pass
+
 
 class FakeStore:
     def load(self):
@@ -754,6 +760,36 @@ def test_stopping_restores_the_base_tempo_on_the_bpm_widgets(qtbot, monkeypatch)
     assert window._slider.value() == 120
 
 
+def test_quick_tempo_nudges_while_running_are_not_undone_by_stale_beats(qtbot, monkeypatch):
+    window, _ = make_window(qtbot)
+    window._controller.set_bpm(120)
+    window._controller.toggle()
+    queued: list[BeatEvent] = []
+
+    def drain() -> list[BeatEvent]:
+        drained = list(queued)
+        queued.clear()
+        return drained
+
+    monkeypatch.setattr(window._controller, "drain_beats", drain)
+
+    def beat(bpm: int) -> BeatEvent:
+        return BeatEvent(beat_index=0, is_downbeat=True, is_subdivision=False, bpm=bpm)
+
+    window._tempo_up.click()
+    window._tempo_up.click()
+    queued.append(beat(120))
+    window._on_tick()
+    assert window._spin.value() == 130
+
+    queued.append(beat(130))
+    window._on_tick()
+    window._tempo_up.click()
+    queued.append(beat(130))
+    window._on_tick()
+    assert window._spin.value() == 135
+
+
 def test_practice_button_reuses_one_dialog(qtbot):
     window, _ = make_window(qtbot)
     window.show()
@@ -774,3 +810,30 @@ def test_playlist_lists_use_the_playlist_font_size(qtbot, tmp_path):
     assert lists
     for playlist_list in lists:
         assert playlist_list.font().pointSizeF() == PLAYLIST_FONT_POINT_SIZE
+
+
+class CountingAudio(FakeAudio):
+    def __init__(self) -> None:
+        super().__init__()
+        self.resets = 0
+
+    def reset_counter(self) -> None:
+        self.resets += 1
+        self.bars_done = 0
+
+
+def test_bar_counter_follows_playback_and_reset_button_clears_it(qtbot):
+    audio = CountingAudio()
+    service = MetronomeService(audio_output=audio, settings_store=FakeStore())
+    window = MainWindow(MetronomeController(service), None)
+    qtbot.addWidget(window)
+    window._controller.toggle()
+    audio.bars_done = 3
+
+    window._on_tick()
+    assert window._bar_counter_label.text() == "3 小節"
+
+    window._bar_reset_button.click()
+
+    assert audio.resets == 1
+    assert window._bar_counter_label.text() == "0 小節"

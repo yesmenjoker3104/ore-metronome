@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from ore_metronome.domain.change_up import ChangeUp, ChangeUpStep
+from ore_metronome.domain.session import MAX_COUNT_IN_BARS, MuteCycle
 from ore_metronome.domain.subdivision import ALLOWED_COUNTS
 from ore_metronome.domain.swing import MAX_SWING_PERCENT, MIN_SWING_PERCENT
 from ore_metronome.domain.tempo_ramp import TempoRamp
@@ -28,6 +29,10 @@ from ore_metronome.ui.widgets.movable_list import MovableList
 DEFAULT_EVERY_BARS = 4
 DEFAULT_DELTA_BPM = 5
 DEFAULT_STEP_BARS = 4
+DEFAULT_MUTE_PLAY_BARS = 4
+DEFAULT_MUTE_BARS = 1
+DEFAULT_STOP_BARS = 16
+DEFAULT_STOP_MINUTES = 5
 DEFAULT_CHANGE_UP_STEPS = (
     ChangeUpStep(1, DEFAULT_STEP_BARS),
     ChangeUpStep(2, DEFAULT_STEP_BARS),
@@ -57,7 +62,7 @@ def _row(*widgets: QWidget) -> QHBoxLayout:
 
 
 class PracticeDialog(QDialog):
-    """テンポアップ・チェンジアップ・スウィングを設定する。変更は即時に反映する。"""
+    """テンポアップ・チェンジアップ・スウィング・カウントイン・ミュート・自動停止を設定する。変更は即時に反映する。"""
 
     def __init__(self, controller: MetronomeController, parent: QWidget | None = None) -> None:
         super().__init__(parent, Qt.WindowType.Window)
@@ -77,6 +82,7 @@ class PracticeDialog(QDialog):
         layout.addWidget(self._build_tempo_ramp_group())
         layout.addWidget(self._build_change_up_group())
         layout.addWidget(self._build_swing_group())
+        layout.addWidget(self._build_practice_flow_group())
         close_button = QPushButton("閉じる")
         set_button_icon(close_button, "close")
         close_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -168,6 +174,35 @@ class PracticeDialog(QDialog):
         self._swing_slider.valueChanged.connect(self._on_swing_changed)
         return group
 
+    def _build_practice_flow_group(self) -> QGroupBox:
+        group = QGroupBox("カウントイン・ミュート・自動停止")
+        layout = QVBoxLayout(group)
+
+        self._count_in_spin = _spin(0, MAX_COUNT_IN_BARS, 0, " 小節")
+        self._mute_play_spin = _spin(1, 99, DEFAULT_MUTE_PLAY_BARS, " 小節鳴らす")
+        self._mute_spin = _spin(0, 99, 0, " 小節休む（0で無効）")
+        self._stop_bars_check = QCheckBox("小節数で停止")
+        self._stop_bars_spin = _spin(1, 9999, DEFAULT_STOP_BARS, " 小節")
+        self._stop_minutes_check = QCheckBox("時間で停止")
+        self._stop_minutes_spin = _spin(1, 999, DEFAULT_STOP_MINUTES, " 分")
+        hint = QLabel("カウントインは次回の再生開始時に反映されます。")
+        hint.setWordWrap(True)
+
+        layout.addLayout(_row(QLabel("カウントイン"), self._count_in_spin))
+        layout.addLayout(_row(QLabel("ミュート"), self._mute_play_spin, self._mute_spin))
+        layout.addLayout(_row(self._stop_bars_check, self._stop_bars_spin))
+        layout.addLayout(_row(self._stop_minutes_check, self._stop_minutes_spin))
+        layout.addWidget(hint)
+
+        self._count_in_spin.valueChanged.connect(self._apply_count_in)
+        self._mute_play_spin.valueChanged.connect(self._apply_mute)
+        self._mute_spin.valueChanged.connect(self._apply_mute)
+        self._stop_bars_check.toggled.connect(self._apply_stop_bars)
+        self._stop_bars_spin.valueChanged.connect(self._apply_stop_bars)
+        self._stop_minutes_check.toggled.connect(self._apply_stop_minutes)
+        self._stop_minutes_spin.valueChanged.connect(self._apply_stop_minutes)
+        return group
+
     def _quietly(self, action: Callable[[], None]) -> None:
         previous = self._syncing
         self._syncing = True
@@ -198,6 +233,47 @@ class PracticeDialog(QDialog):
         swing = self._controller.swing_percent
         self._swing_slider.setValue(swing)
         self._swing_label.setText(f"{swing}%")
+
+        self._count_in_spin.setValue(self._controller.count_in_bars)
+        mute = self._controller.mute_cycle
+        if mute is not None:
+            self._mute_play_spin.setValue(mute.play_bars)
+            self._mute_spin.setValue(mute.mute_bars)
+        else:
+            self._mute_spin.setValue(0)
+        stop_bars = self._controller.stop_after_bars
+        self._stop_bars_check.setChecked(stop_bars is not None)
+        if stop_bars is not None:
+            self._stop_bars_spin.setValue(stop_bars)
+        stop_minutes = self._controller.stop_after_minutes
+        self._stop_minutes_check.setChecked(stop_minutes is not None)
+        if stop_minutes is not None:
+            self._stop_minutes_spin.setValue(int(stop_minutes))
+
+    def _apply_count_in(self) -> None:
+        if self._syncing:
+            return
+        self._controller.set_count_in_bars(self._count_in_spin.value())
+
+    def _apply_mute(self) -> None:
+        if self._syncing:
+            return
+        mute_bars = self._mute_spin.value()
+        mute_cycle = None if mute_bars == 0 else MuteCycle(self._mute_play_spin.value(), mute_bars)
+        self._controller.set_mute_cycle(mute_cycle)
+
+    def _apply_stop_bars(self) -> None:
+        if self._syncing:
+            return
+        enabled = self._stop_bars_check.isChecked()
+        self._controller.set_stop_after_bars(self._stop_bars_spin.value() if enabled else None)
+
+    def _apply_stop_minutes(self) -> None:
+        if self._syncing:
+            return
+        enabled = self._stop_minutes_check.isChecked()
+        minutes = float(self._stop_minutes_spin.value()) if enabled else None
+        self._controller.set_stop_after_minutes(minutes)
 
     def _apply_ramp(self) -> None:
         if self._syncing:

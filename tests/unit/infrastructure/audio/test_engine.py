@@ -5,6 +5,7 @@ import numpy as np
 from ore_metronome.domain.change_up import ChangeUp, ChangeUpStep
 from ore_metronome.domain.meter import Meter
 from ore_metronome.domain.models import MetronomeSettings
+from ore_metronome.domain.session import MuteCycle
 from ore_metronome.domain.tempo_ramp import TempoRamp
 from ore_metronome.infrastructure.audio.engine import SoundDeviceEngine
 from ore_metronome.infrastructure.audio.renderer import render_bar
@@ -55,6 +56,7 @@ def make_sounds() -> SoundKit:
         normal=np.array([0.5, 0.25], dtype=np.float32),
         subdivision_accent=np.array([0.75, 0.375], dtype=np.float32),
         subdivision_normal=np.array([0.0625, 0.03125], dtype=np.float32),
+        count_in=np.array([0.375, 0.1875], dtype=np.float32),
     )
 
 
@@ -379,6 +381,56 @@ def test_beat_events_carry_the_running_bpm_and_subdivision():
         (0, 120, 2),
         (1, 120, 2),
     ]
+
+
+def test_count_in_bar_plays_count_in_sound_and_is_not_counted():
+    factory = FakeStreamFactory()
+    engine = make_engine(factory)
+    settings = replace(make_settings(), count_in_bars=1)
+    engine.start(settings)
+    stream = factory.streams[0]
+
+    count_in = render_bar(settings, make_sounds(), sample_rate=SAMPLE_RATE, count_in=True)
+    np.testing.assert_array_equal(run_callback(stream, len(count_in)), count_in)
+    assert engine.bars_done == 0
+
+    np.testing.assert_array_equal(run_callback(stream, len(count_in)), expected_bar())
+    assert engine.bars_done == 1
+
+
+def test_muted_bar_is_silent_and_still_counted():
+    factory = FakeStreamFactory()
+    engine = make_engine(factory)
+    engine.start(replace(make_settings(), mute_cycle=MuteCycle(play_bars=1, mute_bars=1)))
+    stream = factory.streams[0]
+
+    np.testing.assert_array_equal(run_callback(stream, 100), expected_bar())
+    np.testing.assert_array_equal(run_callback(stream, 100), np.zeros(100, dtype=np.float32))
+    assert engine.bars_done == 2
+
+
+def test_reaching_stop_condition_marks_finished_and_goes_silent():
+    factory = FakeStreamFactory()
+    engine = make_engine(factory)
+    engine.start(replace(make_settings(), stop_after_bars=1))
+    stream = factory.streams[0]
+
+    np.testing.assert_array_equal(run_callback(stream, 100), expected_bar())
+
+    assert engine.finished is True
+    np.testing.assert_array_equal(run_callback(stream, 100), np.zeros(100, dtype=np.float32))
+
+
+def test_reset_counter_restarts_bar_count_while_playing():
+    factory = FakeStreamFactory()
+    engine = make_engine(factory)
+    engine.start(make_settings())
+    run_callback(factory.streams[0], 100)
+    assert engine.bars_done == 1
+
+    engine.reset_counter()
+
+    assert engine.bars_done == 0
 
 
 

@@ -9,6 +9,7 @@ import sounddevice as sd
 from ore_metronome.application.ports import BeatEvent, BeatEventSink
 from ore_metronome.domain.models import MetronomeSettings
 from ore_metronome.domain.performance import Performance
+from ore_metronome.domain.session import BarPlan, Session
 from ore_metronome.domain.tempo import beat_seconds_for_meter
 from ore_metronome.infrastructure.audio.renderer import AudioBuffer, render_bar
 from ore_metronome.infrastructure.audio.sounds import SoundKit
@@ -25,6 +26,7 @@ class _BarPlan:
     beats: int
     bpm: int
     subdivision: int
+    session_bar: BarPlan
 
 
 class SoundDeviceEngine:
@@ -42,8 +44,10 @@ class SoundDeviceEngine:
         self._beat_sink = beat_sink
         self._lock = threading.Lock()
         self._performance: Performance | None = None
+        self._session = Session()
         self._plan: _BarPlan | None = None
         self._pending: MetronomeSettings | None = None
+        self._finished = False
         self._beat_index = 0
         self._position = 0
         self._announce_current = False
@@ -52,6 +56,20 @@ class SoundDeviceEngine:
     @property
     def is_running(self) -> bool:
         return self._stream is not None
+
+    @property
+    def finished(self) -> bool:
+        with self._lock:
+            return self._finished
+
+    @property
+    def bars_done(self) -> int:
+        with self._lock:
+            return self._session.bars_done
+
+    def reset_counter(self) -> None:
+        with self._lock:
+            self._session.reset_counter()
 
     @property
     def sample_rate(self) -> int:
@@ -92,22 +110,40 @@ class SoundDeviceEngine:
                 self._pending = settings
             return
 
+        # 小節カウンタは再生開始ごとに作り直す。
         performance = Performance(settings)
-        plan = self._plan_for(performance.next_bar())
+        session = Session(
+            count_in_bars=settings.count_in_bars,
+            mute=settings.mute_cycle,
+            stop_after_bars=settings.stop_after_bars,
+            stop_after_minutes=settings.stop_after_minutes,
+        )
+        plan = self._plan_for(performance.next_bar(), session.begin_bar())
         with self._lock:
             self._performance = performance
+            self._session = session
             self._plan = plan
             self._pending = None
+            self._finished = False
             self._beat_index = 0
             self._position = 0
 
-    def _plan_for(self, settings: MetronomeSettings) -> _BarPlan:
+    def _plan_for(self, settings: MetronomeSettings, session_bar: BarPlan) -> _BarPlan:
+        bar = render_bar(
+            settings,
+            self._sounds,
+            sample_rate=self._sample_rate,
+            count_in=session_bar.is_count_in,
+        )
+        if session_bar.is_muted:
+            bar = np.zeros_like(bar)
         return _BarPlan(
-            bar=render_bar(settings, self._sounds, sample_rate=self._sample_rate),
+            bar=bar,
             beat_seconds=beat_seconds_for_meter(settings.bpm, settings.meter),
             beats=settings.meter.beats_per_bar,
             bpm=settings.bpm,
             subdivision=settings.subdivision,
+            session_bar=session_bar,
         )
 
     def _fill_buffer(self, outdata, frames, time, status) -> None:
@@ -125,7 +161,8 @@ class SoundDeviceEngine:
             chunks = []
             remaining = frames
             written = 0
-            while remaining > 0:
+            # 自動停止すると _plan が None になり、残りは無音で埋める。
+            while remaining > 0 and self._plan is not None:
                 boundary = self._next_boundary(self._plan)
                 end = min(self._position + remaining, boundary)
                 chunks.append(self._plan.bar[self._position : end])
@@ -135,6 +172,8 @@ class SoundDeviceEngine:
                 self._position = end
                 if end == boundary:
                     self._advance_beat(dac_time, offset_frames=written)
+            if remaining > 0:
+                chunks.append(np.zeros(remaining, dtype=np.float32))
 
         outdata[:, 0] = np.concatenate(chunks)
 
@@ -153,15 +192,31 @@ class SoundDeviceEngine:
         if pending is not None:
             self._pending = None
             self._performance.set_settings(pending)
+            self._session.set_rules(
+                pending.mute_cycle,
+                pending.stop_after_bars,
+                pending.stop_after_minutes,
+            )
             # 拍子が縮んで次の拍が収まらないときは、この拍で小節が変わる
             if not new_bar and next_index >= pending.meter.beats_per_bar:
                 new_bar = True
                 next_index = 0
 
         if new_bar:
-            self._plan = self._plan_for(self._performance.next_bar())
+            bar_seconds = self._plan.beat_seconds * self._plan.beats
+            if self._session.end_bar(self._plan.session_bar, bar_seconds):
+                self._plan = None
+                self._finished = True
+                return
+            self._plan = self._plan_for(
+                self._performance.next_bar(),
+                self._session.begin_bar(),
+            )
         elif pending is not None:
-            self._plan = self._plan_for(self._performance.current())
+            self._plan = self._plan_for(
+                self._performance.current(),
+                self._plan.session_bar,
+            )
 
         self._beat_index = next_index
         self._position = self._beat_start(self._plan, self._beat_index)

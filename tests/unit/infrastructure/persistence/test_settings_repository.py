@@ -6,6 +6,7 @@ import pytest
 from ore_metronome.domain.change_up import ChangeUp, ChangeUpStep
 from ore_metronome.domain.meter import Meter
 from ore_metronome.domain.models import BeatLevel, MetronomeSettings
+from ore_metronome.domain.session import MuteCycle
 from ore_metronome.domain.tempo_ramp import TempoRamp
 from ore_metronome.infrastructure.persistence.settings_repository import (
     CURRENT_SCHEMA_VERSION,
@@ -287,7 +288,23 @@ def test_practice_settings_round_trip(tmp_path: Path):
     assert repository.load() == settings
 
 
-def test_practice_settings_are_off_when_missing(tmp_path: Path):
+def test_practice_flow_settings_round_trip(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    repository = SettingsRepository(path)
+    settings = MetronomeSettings(
+        bpm=100,
+        meter=Meter(4, 4),
+        subdivision=1,
+        count_in_bars=2,
+        mute_cycle=MuteCycle(play_bars=4, mute_bars=1),
+        stop_after_bars=16,
+        stop_after_minutes=5.5,
+    )
+
+    repository.save(settings)
+
+    assert repository.load() == settings
+
     path = tmp_path / "settings.json"
     path.write_text(
         json.dumps(

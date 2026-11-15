@@ -13,10 +13,8 @@ def make_test_sounds() -> SoundKit:
         normal=np.array([0.25, 0.125], dtype=np.float32),
         subdivision_accent=np.array([0.5, 0.25], dtype=np.float32),
         subdivision_normal=np.array([0.0625, 0.03125], dtype=np.float32),
+        count_in=np.array([0.375, 0.1875], dtype=np.float32),
     )
-
-
-def test_render_bar_returns_one_bar_of_audio():
     settings = MetronomeSettings(
         bpm=120,
         meter=Meter(4, 4),

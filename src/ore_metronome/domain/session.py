@@ -3,6 +3,21 @@ from dataclasses import dataclass
 MAX_COUNT_IN_BARS = 2
 
 
+def validate_count_in_bars(count_in_bars: int) -> None:
+    if not 0 <= count_in_bars <= MAX_COUNT_IN_BARS:
+        raise ValueError(f"count_in_bars must be between 0 and {MAX_COUNT_IN_BARS}")
+
+
+def validate_stop_after_bars(stop_after_bars: int | None) -> None:
+    if stop_after_bars is not None and stop_after_bars < 1:
+        raise ValueError("stop_after_bars must be at least 1")
+
+
+def validate_stop_after_minutes(stop_after_minutes: float | None) -> None:
+    if stop_after_minutes is not None and stop_after_minutes <= 0:
+        raise ValueError("stop_after_minutes must be positive")
+
+
 @dataclass(frozen=True)
 class MuteCycle:
     play_bars: int
@@ -35,12 +50,9 @@ class Session:
             stop_after_bars: int | None = None,
             stop_after_minutes: float | None = None,
     ) -> None:
-        if not 0 <= count_in_bars <= MAX_COUNT_IN_BARS:
-            raise ValueError(f"count_in_bars must be between 0 and {MAX_COUNT_IN_BARS}")
-        if stop_after_bars is not None and stop_after_bars < 1:
-            raise ValueError("stop_after_bars must be at least 1")
-        if stop_after_minutes is not None and stop_after_minutes <= 0:
-            raise ValueError("stop_after_minutes must be positive")
+        validate_count_in_bars(count_in_bars)
+        validate_stop_after_bars(stop_after_bars)
+        validate_stop_after_minutes(stop_after_minutes)
         self._count_in_remaining = count_in_bars
         self._mute = mute
         self._stop_after_bars = stop_after_bars
@@ -51,6 +63,19 @@ class Session:
     @property
     def bars_done(self) -> int:
         return self._bar_done
+
+    def set_rules(
+            self,
+            mute: MuteCycle | None,
+            stop_after_bars: int | None,
+            stop_after_minutes: float | None,
+    ) -> None:
+        # 再生中の変更でも小節カウンタは保持する。
+        validate_stop_after_bars(stop_after_bars)
+        validate_stop_after_minutes(stop_after_minutes)
+        self._mute = mute
+        self._stop_after_bars = stop_after_bars
+        self._stop_after_minutes = stop_after_minutes
 
     def begin_bar(self) -> BarPlan:
         if self._count_in_remaining > 0:

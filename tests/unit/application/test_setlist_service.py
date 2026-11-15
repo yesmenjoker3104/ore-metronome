@@ -22,6 +22,12 @@ class FakeAudio:
     def configure(self, settings) -> None:
         pass
 
+    finished = False
+    bars_done = 0
+
+    def reset_counter(self) -> None:
+        pass
+
 
 class FakeSettingsStore:
     def load(self):

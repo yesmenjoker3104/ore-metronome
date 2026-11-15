@@ -4,6 +4,7 @@ from ore_metronome.application.ports import AudioOutput, SettingsStore
 from ore_metronome.domain.change_up import ChangeUp
 from ore_metronome.domain.meter import Meter
 from ore_metronome.domain.models import BeatLevel, MetronomeSettings
+from ore_metronome.domain.session import MuteCycle
 from ore_metronome.domain.tempo_ramp import TempoRamp
 
 
@@ -93,6 +94,29 @@ class MetronomeService:
 
     def set_swing_percent(self, swing_percent: int) -> None:
         self._apply(replace(self._settings, swing_percent=swing_percent))
+
+    def set_count_in_bars(self, count_in_bars: int) -> None:
+        self._apply(replace(self._settings, count_in_bars=count_in_bars))
+
+    def set_mute_cycle(self, mute_cycle: MuteCycle | None) -> None:
+        self._apply(replace(self._settings, mute_cycle=mute_cycle))
+
+    def set_stop_after_bars(self, stop_after_bars: int | None) -> None:
+        self._apply(replace(self._settings, stop_after_bars=stop_after_bars))
+
+    def set_stop_after_minutes(self, stop_after_minutes: float | None) -> None:
+        self._apply(replace(self._settings, stop_after_minutes=stop_after_minutes))
+
+    def reset_bar_counter(self) -> None:
+        self._audio_output.reset_counter()
+
+    @property
+    def bars_done(self) -> int:
+        return self._audio_output.bars_done
+
+    @property
+    def playback_finished(self) -> bool:
+        return self._audio_output.finished
 
     def save_settings(self) -> None:
         self._settings_store.save(self._settings)

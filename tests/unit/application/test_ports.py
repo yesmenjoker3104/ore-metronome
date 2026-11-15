@@ -36,6 +36,17 @@ class FakeAudioOutput:
     def configure(self, settings: MetronomeSettings) -> None:
         self.configured_settings = settings
 
+    @property
+    def finished(self) -> bool:
+        return False
+
+    @property
+    def bars_done(self) -> int:
+        return 0
+
+    def reset_counter(self) -> None:
+        pass
+
 
 class FakeSettingsStore:
     def __init__(self) -> None:

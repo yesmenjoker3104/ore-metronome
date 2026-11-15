@@ -3,6 +3,7 @@ from ore_metronome.application.ports import BeatEvent
 from ore_metronome.domain.change_up import ChangeUp
 from ore_metronome.domain.meter import MAX_NUMERATOR, MIN_NUMERATOR, Meter
 from ore_metronome.domain.models import MAX_VOLUME, MIN_VOLUME, BeatLevel
+from ore_metronome.domain.session import MAX_COUNT_IN_BARS, MuteCycle
 from ore_metronome.domain.swing import MAX_SWING_PERCENT, MIN_SWING_PERCENT
 from ore_metronome.domain.tap_tempo import TapTempo
 from ore_metronome.domain.tempo_ramp import TempoRamp
@@ -122,6 +123,50 @@ class MetronomeController:
     def set_swing_percent(self, swing_percent: int) -> None:
         clamped = max(MIN_SWING_PERCENT, min(MAX_SWING_PERCENT, swing_percent))
         self._service.set_swing_percent(clamped)
+
+    @property
+    def count_in_bars(self) -> int:
+        return self._service.settings.count_in_bars
+
+    def set_count_in_bars(self, count_in_bars: int) -> None:
+        clamped = max(0, min(MAX_COUNT_IN_BARS, count_in_bars))
+        self._service.set_count_in_bars(clamped)
+
+    @property
+    def mute_cycle(self) -> MuteCycle | None:
+        return self._service.settings.mute_cycle
+
+    def set_mute_cycle(self, mute_cycle: MuteCycle | None) -> None:
+        self._service.set_mute_cycle(mute_cycle)
+
+    @property
+    def stop_after_bars(self) -> int | None:
+        return self._service.settings.stop_after_bars
+
+    def set_stop_after_bars(self, stop_after_bars: int | None) -> None:
+        clamped = None if stop_after_bars is None else max(1, stop_after_bars)
+        self._service.set_stop_after_bars(clamped)
+
+    @property
+    def stop_after_minutes(self) -> float | None:
+        return self._service.settings.stop_after_minutes
+
+    def set_stop_after_minutes(self, stop_after_minutes: float | None) -> None:
+        self._service.set_stop_after_minutes(stop_after_minutes)
+
+    @property
+    def bars_done(self) -> int:
+        return self._service.bars_done
+
+    def reset_bar_counter(self) -> None:
+        self._service.reset_bar_counter()
+
+    def stop_if_finished(self) -> bool:
+        """Stops playback when the automatic stop condition was reached; returns True if stopped."""
+        if not self.is_running or not self._service.playback_finished:
+            return False
+        self._service.stop()
+        return True
 
     def save_settings(self) -> None:
         self._service.save_settings()

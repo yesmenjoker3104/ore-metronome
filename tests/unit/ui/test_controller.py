@@ -25,6 +25,12 @@ class FakeAudio:
     def configure(self, settings) -> None:
         pass
 
+    finished = False
+    bars_done = 0
+
+    def reset_counter(self) -> None:
+        pass
+
 
 class FakeStore:
     def load(self):
@@ -38,6 +44,21 @@ class FakeStore:
 def controller_and_service():
     service = MetronomeService(audio_output=FakeAudio(), settings_store=FakeStore())
     return MetronomeController(service), service
+
+
+def test_stop_if_finished_stops_only_when_running_and_finished():
+    audio = FakeAudio()
+    service = MetronomeService(audio_output=audio, settings_store=FakeStore())
+    controller = MetronomeController(service)
+    assert controller.stop_if_finished() is False
+
+    controller.toggle()
+    assert controller.stop_if_finished() is False
+    assert audio.is_running
+
+    audio.finished = True
+    assert controller.stop_if_finished() is True
+    assert not audio.is_running
 
 
 def test_bpm_reflects_service_settings(controller_and_service):

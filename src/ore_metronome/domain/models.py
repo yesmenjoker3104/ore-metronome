@@ -5,6 +5,12 @@ from types import MappingProxyType
 
 from ore_metronome.domain.change_up import ChangeUp
 from ore_metronome.domain.meter import Meter
+from ore_metronome.domain.session import (
+    MuteCycle,
+    validate_count_in_bars,
+    validate_stop_after_bars,
+    validate_stop_after_minutes,
+)
 from ore_metronome.domain.subdivision import validate_count
 from ore_metronome.domain.swing import DEFAULT_SWING_PERCENT, validate_swing_percent
 from ore_metronome.domain.tempo import validate_bpm
@@ -52,11 +58,19 @@ class MetronomeSettings:
     tempo_ramp: TempoRamp | None = None
     change_up: ChangeUp | None = None
     swing_percent: int = DEFAULT_SWING_PERCENT
+    # 練習用の設定。既定値のときは従来どおりの動作になる。
+    count_in_bars: int = 0
+    mute_cycle: MuteCycle | None = None
+    stop_after_bars: int | None = None
+    stop_after_minutes: float | None = None
 
     def __post_init__(self) -> None:
         validate_bpm(self.bpm)
         validate_count(self.subdivision)
         validate_swing_percent(self.swing_percent)
+        validate_count_in_bars(self.count_in_bars)
+        validate_stop_after_bars(self.stop_after_bars)
+        validate_stop_after_minutes(self.stop_after_minutes)
 
         if not MIN_VOLUME <= self.volume <= MAX_VOLUME:
             raise ValueError(f"Volume must be between {MIN_VOLUME} and {MAX_VOLUME}")

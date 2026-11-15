@@ -212,6 +212,9 @@ class MainWindow(QWidget):
         self._slider = QSlider(Qt.Orientation.Horizontal)
         self._slider.setRange(MIN_BPM, MAX_BPM)
         self._slider.setValue(controller.bpm)
+        self._shown_bpm = controller.bpm
+        # 変更前のテンポで鳴った拍イベントが遅れて届いても、表示を戻さないための記録。
+        self._superseded_bpms: set[int] = set()
 
         self._tempo_down = QPushButton()
         self._tempo_up = QPushButton()
@@ -320,6 +323,12 @@ class MainWindow(QWidget):
         self._indicator = BeatIndicator()
         self._indicator.beat_clicked.connect(self._on_beat_clicked)
         self._refresh_indicator()
+        self._bar_counter_label = QLabel()
+        self._bar_counter_label.setToolTip("再生を開始すると0に戻ります。")
+        self._bar_reset_button = QPushButton("リセット")
+        self._bar_reset_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._bar_reset_button.clicked.connect(self._on_bar_reset_clicked)
+        self._show_bar_count()
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._on_tick)
         self._timer.start(TICK_INTERVAL_MS)
@@ -337,9 +346,15 @@ class MainWindow(QWidget):
         subdivision_row.addWidget(self._subdivision_combo)
         subdivision_row.addWidget(self._mask_container)
         subdivision_row.addStretch()
+        bar_counter_column = QVBoxLayout()
+        bar_counter_column.addWidget(self._bar_counter_label)
+        bar_counter_column.addWidget(self._bar_reset_button)
+        indicator_row = QHBoxLayout()
+        indicator_row.addWidget(self._indicator, 1)
+        indicator_row.addLayout(bar_counter_column)
         column = QVBoxLayout()
         # 縦に余った高さは拍インジケーターが受け取り、ほかの部品の位置は変えない。
-        column.addWidget(_framed("", self._indicator), 1)
+        column.addWidget(_framed("", indicator_row), 1)
         column.addWidget(_framed("テンポ", row))
         tempo_adjust_row = QHBoxLayout()
         tempo_adjust_row.addWidget(self._tempo_down)
@@ -578,10 +593,13 @@ class MainWindow(QWidget):
         self._volume_slider.setValue(self._volume_slider.value() + delta)
 
     def _on_bpm_changed(self, bpm: int) -> None:
+        if self._controller.is_running and bpm != self._shown_bpm:
+            self._superseded_bpms.add(self._shown_bpm)
         self._controller.set_bpm(bpm)
         self._show_bpm(bpm)
 
     def _show_bpm(self, bpm: int) -> None:
+        self._shown_bpm = bpm
         for widget in (self._spin, self._slider):
             widget.blockSignals(True)
             widget.setValue(bpm)
@@ -654,11 +672,19 @@ class MainWindow(QWidget):
             self.setGeometry(rect)
 
     def _on_toggle(self) -> None:
+        self._superseded_bpms.clear()
         self._controller.toggle()
         if not self._controller.is_running:
             # テンポアップで変わった表示を、保存済みの基準テンポに戻す。
             self._show_bpm(self._controller.bpm)
         self._update_toggle_appearance()
+
+    def _on_bar_reset_clicked(self) -> None:
+        self._controller.reset_bar_counter()
+        self._show_bar_count()
+
+    def _show_bar_count(self) -> None:
+        self._bar_counter_label.setText(f"{self._controller.bars_done} 小節")
 
     def _on_tap(self) -> None:
         self._controller.tap(time.monotonic())
@@ -691,9 +717,18 @@ class MainWindow(QWidget):
     def _on_tick(self) -> None:
         if not self._controller.is_running:
             return
+        if self._controller.stop_if_finished():
+            self._show_bpm(self._controller.bpm)
+            self._update_toggle_appearance()
+            self._indicator.set_active_beat(None)
+            self._show_bar_count()
+            return
+        self._show_bar_count()
         for event in self._controller.drain_beats():
             self._indicator.set_active_beat(event.beat_index)
-            if event.bpm is not None:
+            if event.bpm is not None and event.bpm not in self._superseded_bpms:
+                # 変更後のテンポの拍が届いたら、古いテンポの拍はもう来ない。
+                self._superseded_bpms.clear()
                 self._show_bpm(event.bpm)
 
         if not self._controller.is_running:

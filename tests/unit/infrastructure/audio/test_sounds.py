@@ -34,6 +34,7 @@ def test_generate_click_returns_mono_float_array():
         (ClickKind.NORMAL, 1200, 0.7),
         (ClickKind.SUBDIVISION_ACCENT, 1000, 0.5),
         (ClickKind.SUBDIVISION_NORMAL, 800, 0.3),
+        (ClickKind.COUNT_IN, 2200, 0.8),
     ],
 )
 def test_default_sound_has_expected_peak(
@@ -58,6 +59,7 @@ def test_default_sounds_are_available_by_kind():
     assert sounds.for_kind(ClickKind.NORMAL) is sounds.normal
     assert sounds.for_kind(ClickKind.SUBDIVISION_ACCENT) is sounds.subdivision_accent
     assert sounds.for_kind(ClickKind.SUBDIVISION_NORMAL) is sounds.subdivision_normal
+    assert sounds.for_kind(ClickKind.COUNT_IN) is sounds.count_in
 
 
 def test_subdivision_sounds_use_the_same_waveform_as_beat_sounds():

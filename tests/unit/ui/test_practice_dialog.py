@@ -2,6 +2,7 @@ from PySide6.QtWidgets import QPushButton
 
 from ore_metronome.application.metronome_service import MetronomeService
 from ore_metronome.domain.change_up import ChangeUp, ChangeUpStep
+from ore_metronome.domain.session import MuteCycle
 from ore_metronome.domain.swing import DEFAULT_SWING_PERCENT
 from ore_metronome.domain.tempo_ramp import TempoRamp
 from ore_metronome.ui.controller import MetronomeController
@@ -21,6 +22,12 @@ class FakeAudio:
         return None
 
     def configure(self, settings) -> None:
+        pass
+
+    finished = False
+    bars_done = 0
+
+    def reset_counter(self) -> None:
         pass
 
 
@@ -241,3 +248,46 @@ def test_refresh_reflects_controller_without_writing_back(qtbot):
     assert dialog._change_up_enabled.isChecked()
     assert dialog._steps_list.count() == 1
     assert controller.change_up is change_up
+
+
+def test_mute_zero_bars_turns_mute_off(qtbot):
+    dialog, controller = make_dialog(qtbot)
+    dialog._mute_spin.setValue(2)
+    assert controller.mute_cycle == MuteCycle(play_bars=4, mute_bars=2)
+
+    dialog._mute_spin.setValue(0)
+
+    assert controller.mute_cycle is None
+
+
+def test_stop_after_bars_checkbox_enables_and_disables_rule(qtbot):
+    dialog, controller = make_dialog(qtbot)
+
+    dialog._stop_bars_check.setChecked(True)
+    assert controller.stop_after_bars == 16
+
+    dialog._stop_bars_check.setChecked(False)
+    assert controller.stop_after_bars is None
+
+
+def test_count_in_spin_applies_to_controller(qtbot):
+    dialog, controller = make_dialog(qtbot)
+
+    dialog._count_in_spin.setValue(2)
+
+    assert controller.count_in_bars == 2
+
+
+def test_refresh_reflects_practice_flow_settings(qtbot):
+    dialog, controller = make_dialog(qtbot)
+    controller.set_count_in_bars(1)
+    controller.set_mute_cycle(MuteCycle(play_bars=3, mute_bars=2))
+    controller.set_stop_after_minutes(7.0)
+
+    dialog.refresh()
+
+    assert dialog._count_in_spin.value() == 1
+    assert dialog._mute_play_spin.value() == 3
+    assert dialog._mute_spin.value() == 2
+    assert dialog._stop_minutes_check.isChecked()
+    assert dialog._stop_minutes_spin.value() == 7

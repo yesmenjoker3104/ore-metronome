@@ -14,6 +14,7 @@ def render_bar(
     sounds: SoundKit,
     *,
     sample_rate: int,
+    count_in: bool = False,
 ) -> AudioBuffer:
     if sample_rate <= 0:
         raise ValueError("sample_rate must be positive")
@@ -27,6 +28,11 @@ def render_bar(
     subdivision = settings.subdivision
 
     for beat_index in range(settings.meter.beats_per_bar):
+        if count_in:
+            # カウントインは全拍を専用の音で鳴らし、連符と拍の状態は使わない。
+            _mix_into(output, sounds.count_in, round(beat_index * beat_seconds * sample_rate))
+            continue
+
         # メインの拍。
         beat_level = settings.effective_beat_level(beat_index)
         if beat_level is not BeatLevel.SILENT:

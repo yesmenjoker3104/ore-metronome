@@ -20,6 +20,7 @@ class ClickKind(Enum):
     NORMAL = "normal"
     SUBDIVISION_ACCENT = "subdivision_accent"
     SUBDIVISION_NORMAL = "subdivision_normal"
+    COUNT_IN = "count_in"
 
 
 class SoundKit:
@@ -29,11 +30,13 @@ class SoundKit:
         normal: AudioSamples,
         subdivision_accent: AudioSamples,
         subdivision_normal: AudioSamples,
+        count_in: AudioSamples,
     ) -> None:
         self.accent = accent
         self.normal = normal
         self.subdivision_accent = subdivision_accent
         self.subdivision_normal = subdivision_normal
+        self.count_in = count_in
 
     def for_kind(self, kind: ClickKind) -> AudioSamples:
         if kind is ClickKind.ACCENT:
@@ -44,6 +47,8 @@ class SoundKit:
             return self.subdivision_accent
         if kind is ClickKind.SUBDIVISION_NORMAL:
             return self.subdivision_normal
+        if kind is ClickKind.COUNT_IN:
+            return self.count_in
         raise ValueError(f"Unsupported click kind: {kind}")
 
 
@@ -95,6 +100,12 @@ def generate_default_sounds(
         subdivision_normal=generate_click(
             frequency=800,
             amplitude=0.3,
+            sample_rate=sample_rate,
+        ),
+        # カウントインは拍より高い音で、本番の拍と聞き分けられるようにする。
+        count_in=generate_click(
+            frequency=2200,
+            amplitude=0.8,
             sample_rate=sample_rate,
         ),
     )
