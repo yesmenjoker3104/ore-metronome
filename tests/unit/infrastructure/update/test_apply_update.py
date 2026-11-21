@@ -2,9 +2,11 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
+from ore_metronome.infrastructure.update import apply_update
 from ore_metronome.infrastructure.update.apply_update import update_script_path
 
 pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell only")
@@ -101,3 +103,24 @@ def test_waits_for_locked_executable_to_be_released(tmp_path):
 
     assert process.returncode == 0, stderr
     assert (current / "ore-metronome.exe").read_bytes() == b"new-exe"
+
+
+def test_update_runs_a_copy_of_the_script_outside_the_bundle(monkeypatch, tmp_path):
+    commands = []
+    monkeypatch.setattr(
+        apply_update.subprocess, "Popen", lambda command, **_: commands.append(command)
+    )
+    monkeypatch.setattr(apply_update.tempfile, "tempdir", str(tmp_path / "temp"))
+    (tmp_path / "temp").mkdir()
+    bundle = tmp_path / "_MEI123"
+    bundle.mkdir()
+    script = bundle / "apply_update.ps1"
+    script.write_text("# update script", encoding="utf-8")
+
+    apply_update.start_update_process(tmp_path / "staged", tmp_path / "app", script)
+
+    command = commands[0]
+    launched = Path(command[command.index("-File") + 1])
+    assert launched.name == "apply_update.ps1"
+    assert launched.parent != bundle
+    assert launched.read_text(encoding="utf-8") == "# update script"

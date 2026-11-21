@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,10 @@ def start_update_process(
     """Starts the replacement script. It waits for this process to exit before replacing files."""
     if sys.platform != "win32":
         raise RuntimeError("In-app updates are supported on Windows only")
+    # A bundled exe deletes its extraction folder on exit, so the script runs from a copy.
+    script_copy = Path(
+        shutil.copy2(update_script, tempfile.mkdtemp(prefix="ore-metronome-updater-"))
+    )
     environment = os.environ.copy()
     environment["ORE_METRONOME_PARENT_PID"] = str(os.getpid())
     subprocess.Popen(
@@ -26,7 +31,7 @@ def start_update_process(
             "-ExecutionPolicy",
             "Bypass",
             "-File",
-            str(update_script),
+            str(script_copy),
             "-CurrentApplication",
             str(current_application),
             "-StagedApplication",
