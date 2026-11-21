@@ -315,6 +315,14 @@ def test_spin_buttons_are_down_then_up_and_step_by_one(qtbot):
     assert window._slider.value() == 121
 
 
+def test_tempo_number_field_keeps_room_for_digits(qtbot):
+    window, _ = make_window(qtbot)
+    window.show()
+    qtbot.waitExposed(window)
+
+    assert window._spin.lineEdit().width() >= 60
+
+
 def test_volume_slider_syncs_service(qtbot):
     window, service = make_window(qtbot)
 

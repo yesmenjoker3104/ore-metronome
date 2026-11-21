@@ -6,7 +6,6 @@ from typing import Any
 from PySide6.QtCore import QRect, Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QAbstractSpinBox,
     QApplication,
     QComboBox,
     QGroupBox,
@@ -70,6 +69,10 @@ QSpinBox {
     border: 1px solid #1F3D2C;
     border-radius: 8px;
     padding: 4px 8px;
+}
+QSpinBox::up-button, QSpinBox::down-button {
+    width: 0px;
+    border: none;
 }
 QPushButton {
     background-color: #161616;
@@ -211,11 +214,11 @@ class MainWindow(QWidget):
         self._spin = QSpinBox()
         self._spin.setRange(MIN_BPM, MAX_BPM)
         self._spin.setValue(controller.bpm)
-        self._spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self._spin_down = QPushButton("▼")
         self._spin_up = QPushButton("▲")
         for button in (self._spin_down, self._spin_up):
             button.setFont(self.font())
+            button.setFixedWidth(42)
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self._slider = QSlider(Qt.Orientation.Horizontal)
