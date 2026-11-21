@@ -296,6 +296,25 @@ def test_tempo_buttons_stop_at_bpm_limits(qtbot):
     assert service.settings.bpm == MIN_BPM
 
 
+def test_spin_buttons_are_down_then_up_and_step_by_one(qtbot):
+    window, service = make_window(qtbot)
+    window.show()
+    qtbot.waitExposed(window)
+
+    spin_left = window._spin.geometry().left()
+    down_left = window._spin_down.geometry().left()
+    up_left = window._spin_up.geometry().left()
+    tap_left = window._tap.geometry().left()
+    assert spin_left < down_left < up_left < tap_left
+
+    window._spin_down.click()
+    assert service.settings.bpm == 119
+    window._spin_up.click()
+    window._spin_up.click()
+    assert service.settings.bpm == 121
+    assert window._slider.value() == 121
+
+
 def test_volume_slider_syncs_service(qtbot):
     window, service = make_window(qtbot)
 

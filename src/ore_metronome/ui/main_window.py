@@ -6,6 +6,7 @@ from typing import Any
 from PySide6.QtCore import QRect, Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QApplication,
     QComboBox,
     QGroupBox,
@@ -210,6 +211,12 @@ class MainWindow(QWidget):
         self._spin = QSpinBox()
         self._spin.setRange(MIN_BPM, MAX_BPM)
         self._spin.setValue(controller.bpm)
+        self._spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self._spin_down = QPushButton("▼")
+        self._spin_up = QPushButton("▲")
+        for button in (self._spin_down, self._spin_up):
+            button.setFont(self.font())
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self._slider = QSlider(Qt.Orientation.Horizontal)
         self._slider.setRange(MIN_BPM, MAX_BPM)
@@ -310,6 +317,8 @@ class MainWindow(QWidget):
         self._slider.valueChanged.connect(self._on_bpm_changed)
         self._tempo_down.clicked.connect(lambda: self._nudge(-TEMPO_BUTTON_STEP))
         self._tempo_up.clicked.connect(lambda: self._nudge(TEMPO_BUTTON_STEP))
+        self._spin_down.clicked.connect(lambda: self._nudge(-1))
+        self._spin_up.clicked.connect(lambda: self._nudge(1))
         self._volume_down.clicked.connect(lambda: self._nudge_volume(-VOLUME_BUTTON_STEP))
         self._volume_up.clicked.connect(lambda: self._nudge_volume(VOLUME_BUTTON_STEP))
         self._toggle.clicked.connect(self._on_toggle)
@@ -337,6 +346,8 @@ class MainWindow(QWidget):
 
         row = QHBoxLayout()
         row.addWidget(self._spin)
+        row.addWidget(self._spin_down)
+        row.addWidget(self._spin_up)
         row.addWidget(self._tap)
         meter_row = QHBoxLayout()
         meter_row.addWidget(self._numerator_combo)
